@@ -29,6 +29,7 @@ impl ChannelSelectState {
         let levels = Arc::new(Mutex::new(vec![0.0f32; num_channels as usize]));
         let levels_clone = levels.clone();
         let nc = num_channels as usize;
+        let decay = 0.75f32;
 
         let stream = device
             .build_input_stream(
@@ -44,7 +45,9 @@ impl ChannelSelectState {
                         }
                     }
                     if let Ok(mut lvl) = levels_clone.lock() {
-                        *lvl = peaks;
+                        for ch in 0..nc {
+                            lvl[ch] = peaks[ch].max(lvl[ch] * decay);
+                        }
                     }
                 },
                 |err| {
@@ -76,15 +79,25 @@ impl ChannelSelectState {
     }
 }
 
-fn meter_spans(level: f32, width: usize) -> Vec<Span<'static>> {
-    let clamped = level.min(1.0);
-    let filled = (clamped * width as f32).ceil().min(width as f32) as usize;
+fn to_db(level: f32) -> f32 {
+    if level < 0.0001 {
+        -80.0
+    } else {
+        20.0 * level.log10()
+    }
+}
 
-    let bar_color = if level > 0.9 {
+fn meter_spans(level: f32, width: usize) -> Vec<Span<'static>> {
+    // Map dB range (-60..0) to (0..1) for display
+    let db = to_db(level);
+    let normalized = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
+    let filled = (normalized * width as f32).ceil().min(width as f32) as usize;
+
+    let bar_color = if db > -1.0 {
         Color::Red
-    } else if level > 0.5 {
+    } else if db > -6.0 {
         Color::Yellow
-    } else if level > 0.01 {
+    } else if db > -60.0 {
         Color::Green
     } else {
         Color::DarkGray
