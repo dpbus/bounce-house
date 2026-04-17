@@ -11,8 +11,9 @@ pub fn start(
     channels: &[u8],
     output_path: &Path,
 ) -> (Stream, Arc<AtomicBool>, thread::JoinHandle<()>) {
-
-    let config = device.default_input_config().expect("No default input config");
+    let config = device
+        .default_input_config()
+        .expect("No default input config");
     let total_channels = config.channels() as usize;
 
     let max_channel = channels.iter().max().copied().unwrap_or(0) as usize;
@@ -29,21 +30,23 @@ pub fn start(
 
     let (mut producer, consumer) = rtrb::RingBuffer::new(48000 * 12);
 
-    let stream = device.build_input_stream(
-        &config.into(),
-        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            for frame in 0..data.len() / total_channels {
-                for &ch in &channels {
-                    let sample = data[frame * total_channels + ch as usize];
-                    let _ = producer.push(sample);
+    let stream = device
+        .build_input_stream(
+            &config.into(),
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                for frame in 0..data.len() / total_channels {
+                    for &ch in &channels {
+                        let sample = data[frame * total_channels + ch as usize];
+                        let _ = producer.push(sample);
+                    }
                 }
-            }
-        },
-        |err| {
-            eprintln!("Stream error: {}", err);
-        },
-        None,
-    ).expect("Failed to build input stream");
+            },
+            |err| {
+                eprintln!("Stream error: {}", err);
+            },
+            None,
+        )
+        .expect("Failed to build input stream");
 
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
@@ -51,7 +54,13 @@ pub fn start(
     let output_path = output_path.to_path_buf();
 
     let handle = thread::spawn(move || {
-        write_to_disk(consumer, &output_path, sample_rate, num_channels, running_clone)
+        write_to_disk(
+            consumer,
+            &output_path,
+            sample_rate,
+            num_channels,
+            running_clone,
+        )
     });
 
     stream.play().expect("Failed to start stream");

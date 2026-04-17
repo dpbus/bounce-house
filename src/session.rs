@@ -1,7 +1,7 @@
-use chrono::{DateTime, Local};
-use std::path::PathBuf;
 use crate::input::Input;
 use crate::take::Take;
+use chrono::{DateTime, Local};
+use std::path::PathBuf;
 
 pub struct Session {
     pub sample_rate: u32,
@@ -14,12 +14,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(
-        sample_rate: u32,
-        raw_dir: PathBuf,
-        bounce_dir: PathBuf,
-        num_inputs: u8,
-    ) -> Session {
+    pub fn new(sample_rate: u32, raw_dir: PathBuf, bounce_dir: PathBuf, num_inputs: u8) -> Session {
         let started_at = Local::now();
         let inputs = (0..num_inputs).map(Input::new).collect();
 
