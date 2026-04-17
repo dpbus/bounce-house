@@ -1,31 +1,25 @@
 mod input;
 mod take;
 mod session;
+mod capture;
 
-use cpal::traits::{DeviceTrait, HostTrait};
+use std::path::Path;
+use std::sync::atomic::Ordering;
+use cpal::traits::HostTrait;
 
 fn main() {
     let host = cpal::default_host();
+    let device = host.default_input_device().expect("no input device available");
 
-    let devices = host.input_devices().expect("Failed to get input devices");
+    let channels: Vec<u8> = vec![0];
+    let (stream, running, handle) = capture::start(&device, &channels, Path::new("output.wav"));
 
-    for device in devices {
-        let name = device.name().unwrap_or_else(|_| "Unknown".to_string());
-        let config = device.default_input_config();
+    println!("Press Enter to stop...");
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).unwrap();
 
-        match config {
-            Ok(config) => {
-                println!("{}", name);
-                println!("  Channels: {}", config.channels());
-                println!("  Sample Rate: {}", config.sample_rate().0);
-                println!("  Sample Format: {:?}", config.sample_format());
-                println!();
-            }
-            Err(e) => {
-                println!("{}", name);
-                println!("  Error getting config: {}", e);
-                println!();
-            }
-        }
-    }
+    running.store(false, Ordering::Relaxed);
+    drop(stream);
+    handle.join().expect("Writer thread panicked");
+    println!("Done!");
 }

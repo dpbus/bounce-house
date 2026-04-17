@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 chrono = "0.4"
 cpal = "0.15"
+hound = "3.5"
+rtrb = "0.3"
