@@ -1,71 +1,27 @@
-use std::sync::{Arc, Mutex};
-
-use cpal::Stream;
-use cpal::traits::{DeviceTrait, StreamTrait};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem};
 
 use crate::ui::Action;
+use crate::audio_interface::AudioInterface;
+use crate::level_monitor::LevelMonitor;
 
 pub struct ChannelSelectState {
-    pub device_name: String,
-    pub num_channels: u16,
+    pub interface: AudioInterface,
     pub selected: Vec<bool>,
     pub cursor: usize,
-    levels: Arc<Mutex<Vec<f32>>>,
-    _stream: Stream,
+    level_monitor: LevelMonitor,
 }
 
 impl ChannelSelectState {
-    pub fn new(device: &cpal::Device) -> Self {
-        let device_name = device.name().unwrap_or_else(|_| "Unknown".to_string());
-        let config = device
-            .default_input_config()
-            .expect("No default input config");
-        let num_channels = config.channels();
-        let selected = vec![false; num_channels as usize];
-
-        let levels = Arc::new(Mutex::new(vec![0.0f32; num_channels as usize]));
-        let levels_clone = levels.clone();
-        let nc = num_channels as usize;
-        let decay = 0.75f32;
-
-        let stream = device
-            .build_input_stream(
-                &config.into(),
-                move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    let mut peaks = vec![0.0f32; nc];
-                    for frame in 0..data.len() / nc {
-                        for ch in 0..nc {
-                            let sample = data[frame * nc + ch].abs();
-                            if sample > peaks[ch] {
-                                peaks[ch] = sample;
-                            }
-                        }
-                    }
-                    if let Ok(mut lvl) = levels_clone.lock() {
-                        for ch in 0..nc {
-                            lvl[ch] = peaks[ch].max(lvl[ch] * decay);
-                        }
-                    }
-                },
-                |err| {
-                    eprintln!("Preview stream error: {}", err);
-                },
-                None,
-            )
-            .expect("Failed to build preview stream");
-
-        stream.play().expect("Failed to start preview stream");
-
+    pub fn new(interface: AudioInterface) -> Self {
+        let num_channels = interface.channel_count();
+        let level_monitor = LevelMonitor::new(&interface);
         ChannelSelectState {
-            device_name,
-            num_channels,
-            selected,
+            interface,
+            selected: vec![false; num_channels],
             cursor: 0,
-            levels,
-            _stream: stream,
+            level_monitor,
         }
     }
 
@@ -115,7 +71,7 @@ fn meter_spans(level: f32, width: usize) -> Vec<Span<'static>> {
 }
 
 pub fn draw(frame: &mut Frame, state: &ChannelSelectState) {
-    let levels = state.levels.lock().map(|l| l.clone()).unwrap_or_default();
+    let levels = state.level_monitor.levels();
 
     let items: Vec<ListItem> = state
         .selected
@@ -140,7 +96,7 @@ pub fn draw(frame: &mut Frame, state: &ChannelSelectState) {
 
     let title = format!(
         " {} — Select Channels (Space to toggle, Enter to record) ",
-        state.device_name
+        state.interface.name()
     );
     let list = List::new(items).block(
         Block::default()
@@ -161,7 +117,7 @@ pub fn handle_input(state: &mut ChannelSelectState, key: KeyEvent) -> Action {
             Action::None
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            if state.cursor < (state.num_channels as usize).saturating_sub(1) {
+            if state.cursor < state.selected.len().saturating_sub(1) {
                 state.cursor += 1;
             }
             Action::None

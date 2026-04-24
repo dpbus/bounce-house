@@ -4,54 +4,46 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use cpal::Stream;
-use cpal::traits::{DeviceTrait, StreamTrait};
+use cpal::traits::StreamTrait;
+
+use crate::audio_interface::AudioInterface;
 
 pub fn start(
-    device: &cpal::Device,
+    interface: &AudioInterface,
     channels: &[u8],
     output_path: &Path,
 ) -> (Stream, Arc<AtomicBool>, thread::JoinHandle<()>) {
-    let config = device
-        .default_input_config()
-        .expect("No default input config");
-    let total_channels = config.channels() as usize;
+    let total_channel_count = interface.channel_count();
 
     let max_channel = channels.iter().max().copied().unwrap_or(0) as usize;
     assert!(
-        max_channel < total_channels,
+        max_channel < total_channel_count,
         "Requested channel {} but device only has {} channels",
         max_channel,
-        total_channels,
+        total_channel_count,
     );
 
-    let num_channels = channels.len() as u16;
-    let sample_rate = config.sample_rate().0;
-    let channels = channels.to_vec();
-
+    let stream_channels = channels.to_vec();
     let (mut producer, consumer) = rtrb::RingBuffer::new(48000 * 12);
 
-    let stream = device
+    let stream = interface
         .build_input_stream(
-            &config.into(),
-            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                for frame in 0..data.len() / total_channels {
-                    for &ch in &channels {
-                        let sample = data[frame * total_channels + ch as usize];
+            move |data: &[f32]| {
+                for frame in 0..data.len() / total_channel_count {
+                    for &ch in &stream_channels {
+                        let sample = data[frame * total_channel_count + ch as usize];
                         let _ = producer.push(sample);
                     }
                 }
-            },
-            |err| {
-                eprintln!("Stream error: {}", err);
-            },
-            None,
-        )
-        .expect("Failed to build input stream");
+            }
+        );
+
 
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
-
     let output_path = output_path.to_path_buf();
+    let sample_rate = interface.sample_rate();
+    let num_channels = channels.len() as u16;
 
     let handle = thread::spawn(move || {
         write_to_disk(

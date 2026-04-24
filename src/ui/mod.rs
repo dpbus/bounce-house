@@ -64,8 +64,8 @@ fn run_loop(
                     Action::NextScreen => {
                         screen = match screen {
                             Screen::DeviceSelect(state) => {
-                                let device = state.selected_device();
-                                Screen::ChannelSelect(ChannelSelectState::new(device))
+                                let interface = state.take_selected();
+                                Screen::ChannelSelect(ChannelSelectState::new(interface))
                             }
                             Screen::ChannelSelect(_state) => {
                                 // TODO: transition to recording

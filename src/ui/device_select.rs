@@ -1,53 +1,42 @@
-use cpal::traits::{DeviceTrait, HostTrait};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem};
 
 use crate::ui::Action;
+use crate::audio_interface::AudioInterface;
 
 pub struct DeviceSelectState {
-    pub devices: Vec<cpal::Device>,
-    pub names: Vec<String>,
+    pub interfaces: Vec<AudioInterface>,
     pub cursor: usize,
 }
 
 impl DeviceSelectState {
     pub fn new() -> Self {
-        let host = cpal::default_host();
-        let devices: Vec<cpal::Device> = host
-            .input_devices()
-            .expect("Failed to get input devices")
-            .collect();
-
-        let names: Vec<String> = devices
-            .iter()
-            .map(|d| d.name().unwrap_or_else(|_| "Unknown".to_string()))
-            .collect();
+        let interfaces = AudioInterface::list();
 
         DeviceSelectState {
-            devices,
-            names,
+            interfaces,
             cursor: 0,
         }
     }
 
-    pub fn selected_device(&self) -> &cpal::Device {
-        &self.devices[self.cursor]
+    pub fn take_selected(mut self) -> AudioInterface {
+        self.interfaces.swap_remove(self.cursor)
     }
 }
 
 pub fn draw(frame: &mut Frame, state: &DeviceSelectState) {
     let items: Vec<ListItem> = state
-        .names
+        .interfaces
         .iter()
         .enumerate()
-        .map(|(i, name)| {
+        .map(|(i, interface)| {
             let style = if i == state.cursor {
                 Style::default().fg(Color::Black).bg(Color::Cyan)
             } else {
                 Style::default()
             };
-            ListItem::new(name.as_str()).style(style)
+            ListItem::new(interface.name()).style(style)
         })
         .collect();
 
@@ -71,7 +60,7 @@ pub fn handle_input(state: &mut DeviceSelectState, key: KeyEvent) -> Action {
             Action::None
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            if state.cursor < state.names.len().saturating_sub(1) {
+            if state.cursor < state.interfaces.len().saturating_sub(1) {
                 state.cursor += 1;
             }
             Action::None
