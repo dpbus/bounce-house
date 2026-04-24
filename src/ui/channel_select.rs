@@ -79,7 +79,7 @@ pub fn draw(frame: &mut Frame, state: &ChannelSelectState) {
         .enumerate()
         .map(|(i, &on)| {
             let marker = if on { "[x]" } else { "[ ]" };
-            let level = levels.get(i).copied().unwrap_or(0.0);
+            let level = levels.get(i).map(|cl| cl.current()).unwrap_or(0.0);
 
             let row_style = if i == state.cursor {
                 Style::default().fg(Color::White).bg(Color::DarkGray)
