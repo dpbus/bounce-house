@@ -12,7 +12,7 @@ use crate::capture::{self, CaptureHandle};
 use crate::ui::Action;
 use crate::ui::widgets::meter_spans;
 
-const FAST_DECAY: f32 = 0.7;
+const FAST_DECAY: f32 = 0.93;
 const SLOW_DECAY: f32 = 0.97;
 
 pub struct RecordingState {

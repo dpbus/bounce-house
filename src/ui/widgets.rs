@@ -13,9 +13,9 @@ pub fn meter_spans(level: f32, width: usize) -> Vec<Span<'static>> {
     let normalized = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
     let filled = (normalized * width as f32).ceil().min(width as f32) as usize;
 
-    let bar_color = if db > -1.0 {
+    let bar_color = if db > -3.0 {
         Color::Red
-    } else if db > -6.0 {
+    } else if db > -18.0 {
         Color::Yellow
     } else if db > -60.0 {
         Color::Green
