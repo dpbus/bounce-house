@@ -75,7 +75,7 @@ fn channel_row<'a>(
         row_style,
     )];
 
-    let level = app.engine.level(channel.index);
+    let level = app.display_levels[channel.index.as_usize()];
     spans.extend(horizontal_meter(level, None, METER_WIDTH));
 
     ListItem::new(Line::from(spans))

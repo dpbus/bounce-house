@@ -2,7 +2,10 @@ use std::sync::atomic::Ordering;
 
 use atomic_float::AtomicF32;
 
-/// A peak level shared between the audio thread (writer) and UI threads (readers).
+/// Per-channel peak amplitude. Audio thread accumulates the absolute peak
+/// across every audio buffer (so peaks aren't missed when multiple buffers
+/// run between UI ticks); UI thread atomically reads-and-resets via
+/// `take_current` once per tick.
 pub struct ChannelLevel(AtomicF32);
 
 impl ChannelLevel {
@@ -10,11 +13,17 @@ impl ChannelLevel {
         ChannelLevel(AtomicF32::new(0.0))
     }
 
-    pub fn current(&self) -> f32 {
-        self.0.load(Ordering::Relaxed)
+    /// Audio thread: fold a buffer's absolute peak into the accumulator.
+    pub(super) fn record(&self, buffer_peak: f32) {
+        let _ = self
+            .0
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |c| {
+                if buffer_peak > c { Some(buffer_peak) } else { None }
+            });
     }
 
-    pub(super) fn store(&self, value: f32) {
-        self.0.store(value, Ordering::Relaxed);
+    /// UI thread: read the accumulated peak since the last call and reset.
+    pub fn take_current(&self) -> f32 {
+        self.0.swap(0.0, Ordering::Relaxed)
     }
 }

@@ -6,7 +6,7 @@ use cpal::traits::StreamTrait;
 
 use crate::audio::Device;
 use crate::audio::levels::ChannelLevel;
-use crate::units::{ChannelIndex, SamplePosition, SampleRate};
+use crate::units::{SamplePosition, SampleRate};
 
 const RECORDING_BUFFER_SECONDS: usize = 2;
 
@@ -63,7 +63,7 @@ impl Engine {
                 }
             }
 
-            // 2. Publish per-channel peaks (always)
+            // 2. Publish per-channel absolute peak (always)
             state.peaks_buf.fill(0.0);
             let frames = data.len() / state.total_channel_count;
             for frame in 0..frames {
@@ -75,7 +75,7 @@ impl Engine {
                 }
             }
             for (level, &peak) in state.levels.iter().zip(state.peaks_buf.iter()) {
-                level.store(peak);
+                level.record(peak);
             }
 
             // 3. Advance sample position
@@ -119,10 +119,6 @@ impl Engine {
 
     pub fn levels(&self) -> &[ChannelLevel] {
         &self.levels
-    }
-
-    pub fn level(&self, idx: ChannelIndex) -> f32 {
-        self.levels[idx.as_usize()].current()
     }
 
     pub fn sample_position(&self) -> SamplePosition {

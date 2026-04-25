@@ -1,13 +1,21 @@
+use std::collections::VecDeque;
+
 use chrono::Local;
 use ratatui::prelude::*;
+use ratatui::symbols::Marker;
+use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
-use crate::app::{App, AppState};
+use crate::app::{App, AppState, TICK_FPS};
 use crate::channel::Channel;
-use crate::ui::widgets::{key_hint, vertical_meter};
+use crate::ui::widgets::{
+    BAND_GREEN, BAND_RED, BAND_YELLOW, band_thresholds, key_hint, linear_to_db_fraction,
+    vertical_meter,
+};
 
 const TOP_BAR_HEIGHT: u16 = 12;
-const STRIP_GAP: u16 = 2; // vertical breathing room between top bar and meter strips
+const WAVEFORM_HEIGHT: u16 = 16;
+const GAP: u16 = 1; // standard breathing room between sections
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let block = outer_block(app);
@@ -18,24 +26,26 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(TOP_BAR_HEIGHT),  // session + recording panels
-            Constraint::Length(STRIP_GAP),        // gap
+            Constraint::Length(GAP),
+            Constraint::Length(WAVEFORM_HEIGHT), // waveform panel
+            Constraint::Length(GAP),
             Constraint::Fill(1),                  // meter strips fill remaining space
+            Constraint::Length(GAP),
             Constraint::Length(1),                // footer (key hints)
         ])
         .split(inner);
 
     let top_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .horizontal_margin(4)
-        .vertical_margin(1)
         .spacing(2)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[0]);
 
     draw_session_panel(frame, top_chunks[0], app);
     draw_recording_panel(frame, top_chunks[1], app);
-    draw_meter_strips(frame, chunks[2], app);
-    frame.render_widget(Paragraph::new(footer_line(app)), chunks[3]);
+    draw_waveform(frame, chunks[2], app);
+    draw_meter_strips(frame, chunks[4], app);
+    frame.render_widget(Paragraph::new(footer_line(app)), chunks[6]);
 }
 
 fn outer_block(app: &App) -> Block<'static> {
@@ -49,6 +59,7 @@ fn outer_block(app: &App) -> Block<'static> {
     Block::default()
         .title(title)
         .borders(Borders::ALL)
+        .padding(Padding::new(2, 2, 1, 1))
         .border_style(Style::default().fg(color))
 }
 
@@ -138,6 +149,109 @@ fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
+fn draw_waveform(frame: &mut Frame, area: Rect, app: &App) {
+    let label = match app.waveform_window_secs {
+        s if s < 60 => format!("{}s", s),
+        s if s < 3600 => format!("{} min", s / 60),
+        s => format!("{} hr", s / 3600),
+    };
+    let block = Block::default()
+        .title(format!(" Waveform — {} window ", label))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if app.recording_history.is_empty() {
+        let msg = Paragraph::new("(no recording yet)")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        frame.render_widget(msg, inner);
+        return;
+    }
+
+    let width = inner.width as usize;
+    let height = inner.height as usize;
+    if width == 0 || height < 2 {
+        return;
+    }
+
+    // Braille markers pack 2x4 dots per cell — run at 2x horizontal resolution.
+    let pixel_width = width * 2;
+    let amps = waveform_amps(&app.recording_history, app.waveform_window_secs, pixel_width);
+    let (warn, clip) = band_thresholds();
+    let (warn, clip) = (warn as f64, clip as f64);
+    // 1 braille pixel of vertical extent — keeps the centerline visible
+    // through silent recorded moments.
+    let min_y = 1.0 / (height as f64 * 4.0);
+
+    let canvas = Canvas::default()
+        .marker(Marker::Braille)
+        .x_bounds([0.0, pixel_width as f64])
+        .y_bounds([-1.0, 1.0])
+        .paint(move |ctx| {
+            for (col, opt) in amps.iter().enumerate() {
+                let Some(amp) = opt else { continue };
+                let half = (linear_to_db_fraction(*amp) as f64).max(min_y);
+                let x = col as f64;
+
+                let g_top = half.min(warn);
+                ctx.draw(&CanvasLine {
+                    x1: x, y1: -g_top, x2: x, y2: g_top, color: BAND_GREEN,
+                });
+                if half > warn {
+                    let y_top = half.min(clip);
+                    ctx.draw(&CanvasLine {
+                        x1: x, y1: warn, x2: x, y2: y_top, color: BAND_YELLOW,
+                    });
+                    ctx.draw(&CanvasLine {
+                        x1: x, y1: -y_top, x2: x, y2: -warn, color: BAND_YELLOW,
+                    });
+                }
+                if half > clip {
+                    ctx.draw(&CanvasLine {
+                        x1: x, y1: clip, x2: x, y2: half, color: BAND_RED,
+                    });
+                    ctx.draw(&CanvasLine {
+                        x1: x, y1: -half, x2: x, y2: -clip, color: BAND_RED,
+                    });
+                }
+            }
+        });
+    frame.render_widget(canvas, inner);
+}
+
+/// One amplitude value per pixel column, anchored to absolute recording-history
+/// indices so each bucket is sealed once its time has passed (no sliding-window
+/// decay artifact). The rightmost column is the in-progress bucket and updates
+/// every tick. `None` columns are pre-recording or empty future buckets.
+fn waveform_amps(
+    history: &VecDeque<f32>,
+    window_secs: u64,
+    pixel_width: usize,
+) -> Vec<Option<f32>> {
+    let visible_ticks = window_secs as usize * TICK_FPS;
+    let bucket_size = (visible_ticks / pixel_width).max(1);
+    let history_len = history.len();
+    let latest_bucket = (history_len / bucket_size) as i64;
+    let leftmost = latest_bucket - (pixel_width as i64 - 1);
+
+    (0..pixel_width)
+        .map(|col| {
+            let bucket_idx = leftmost + col as i64;
+            if bucket_idx < 0 {
+                return None;
+            }
+            let start = bucket_idx as usize * bucket_size;
+            let end = (start + bucket_size).min(history_len);
+            if start >= end {
+                return None;
+            }
+            Some(history.range(start..end).copied().fold(0.0f32, f32::max))
+        })
+        .collect()
+}
+
 fn labeled(label: &'static str, value: String) -> Line<'static> {
     Line::from(vec![
         Span::styled(label, Style::default().fg(Color::DarkGray)),
@@ -146,6 +260,14 @@ fn labeled(label: &'static str, value: String) -> Line<'static> {
 }
 
 fn draw_meter_strips(frame: &mut Frame, area: Rect, app: &App) {
+    let block = Block::default()
+        .title(" Meters ")
+        .borders(Borders::ALL)
+        .padding(Padding::new(2, 2, 1, 1))
+        .border_style(Style::default().fg(Color::DarkGray));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
     let armed: Vec<&Channel> = app.session.armed().collect();
     if armed.is_empty() {
         let msg = Paragraph::new(Line::from(vec![
@@ -154,7 +276,7 @@ fn draw_meter_strips(frame: &mut Frame, area: Rect, app: &App) {
             Span::raw(" open channel picker to arm channels"),
         ]))
         .alignment(Alignment::Center);
-        frame.render_widget(msg, area);
+        frame.render_widget(msg, inner);
         return;
     }
 
@@ -162,7 +284,7 @@ fn draw_meter_strips(frame: &mut Frame, area: Rect, app: &App) {
     let strips = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Ratio(1, n as u32); n])
-        .split(area);
+        .split(inner);
 
     let meter_width = compute_meter_width(strips[0].width);
 
@@ -222,6 +344,7 @@ fn footer_line(app: &App) -> Line<'static> {
         AppState::Idle => {
             spans.extend(key_hint("R", "record  ", Color::Cyan));
             spans.extend(key_hint("C", "channels  ", Color::Cyan));
+            spans.extend(key_hint("W", "waveform window  ", Color::Cyan));
             spans.extend(key_hint("Q", "quit", Color::DarkGray));
         }
         AppState::Recording {
@@ -229,6 +352,7 @@ fn footer_line(app: &App) -> Line<'static> {
             ..
         } => {
             spans.extend(key_hint("Esc", "stop  ", Color::Cyan));
+            spans.extend(key_hint("W", "waveform window  ", Color::Cyan));
             spans.extend(key_hint("Space", "mark take (coming soon)", Color::DarkGray));
         }
         AppState::Recording {

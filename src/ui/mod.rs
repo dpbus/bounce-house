@@ -82,6 +82,7 @@ enum KeyAction {
     StopRecording,
     OpenPicker,
     ClosePicker,
+    CycleWaveformWindow,
     PickerCursorUp,
     PickerCursorDown,
     PickerToggleArmed,
@@ -99,10 +100,12 @@ fn decide(state: &AppState, key: KeyEvent) -> KeyAction {
             Char('q') | Char('Q') | Esc => KeyAction::Quit,
             Char('r') | Char('R') => KeyAction::StartRecording,
             Char('c') | Char('C') => KeyAction::OpenPicker,
+            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
             _ => KeyAction::None,
         },
         AppState::Recording { confirming_stop: false, .. } => match key.code {
             Esc => KeyAction::BeginConfirmStop,
+            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
             _ => KeyAction::None,
         },
         AppState::Recording { confirming_stop: true, .. } => match key.code {
@@ -153,6 +156,7 @@ fn apply(app: &mut App, action: KeyAction) {
         KeyAction::ClosePicker => {
             app.state = AppState::Idle;
         }
+        KeyAction::CycleWaveformWindow => app.cycle_waveform_window(),
         KeyAction::PickerCursorUp => {
             if let AppState::PickingChannel { cursor, .. } = &mut app.state {
                 if *cursor > 0 {
