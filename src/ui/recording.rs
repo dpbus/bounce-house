@@ -23,6 +23,7 @@ pub struct RecordingState {
     capture: CaptureHandle,
     display_levels: Vec<f32>,
     peak_holds: Vec<f32>,
+    confirming_stop: bool,
 }
 
 impl Drop for RecordingState {
@@ -50,6 +51,7 @@ impl RecordingState {
             capture,
             display_levels: vec![0.0; num_channels],
             peak_holds: vec![0.0; num_channels],
+            confirming_stop: false,
         }
     }
 
@@ -80,8 +82,9 @@ pub fn draw(frame: &mut Frame, state: &RecordingState) {
         .enumerate()
         .map(|(i, &ch)| {
             let level = state.display_levels[i];
+            let peak = state.peak_holds[i];
             let mut spans = vec![Span::raw(format!("Ch {:>2}  ", ch))];
-            spans.extend(meter_spans(level, 30));
+            spans.extend(meter_spans(level, Some(peak), 30));
             ListItem::new(Line::from(spans))
         })
         .collect();
@@ -92,12 +95,26 @@ pub fn draw(frame: &mut Frame, state: &RecordingState) {
         Span::raw(state.output_path.display().to_string()),
     ])));
     items.push(ListItem::new(""));
-    items.push(ListItem::new(Line::from(vec![
-        Span::styled("[Esc]", Style::default().fg(Color::Cyan)),
-        Span::raw(" stop and save  "),
-        Span::styled("[Space]", Style::default().fg(Color::DarkGray)),
-        Span::raw(" mark take (coming soon)"),
-    ])));
+
+    if state.confirming_stop {
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(
+                "Stop recording?  ",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("[Esc]", Style::default().fg(Color::Cyan)),
+            Span::raw(" yes  "),
+            Span::styled("[any other key]", Style::default().fg(Color::DarkGray)),
+            Span::raw(" no"),
+        ])));
+    } else {
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled("[Esc]", Style::default().fg(Color::Cyan)),
+            Span::raw(" stop and save  "),
+            Span::styled("[Space]", Style::default().fg(Color::DarkGray)),
+            Span::raw(" mark take (coming soon)"),
+        ])));
+    }
 
     let list = List::new(items).block(
         Block::default()
@@ -108,13 +125,26 @@ pub fn draw(frame: &mut Frame, state: &RecordingState) {
     frame.render_widget(list, frame.area());
 }
 
-pub fn handle_input(_state: &mut RecordingState, key: KeyEvent) -> Action {
-    match key.code {
-        KeyCode::Esc => Action::Quit,
-        KeyCode::Char(' ') => {
-            // TODO: mark take + open name modal
-            Action::None
+pub fn handle_input(state: &mut RecordingState, key: KeyEvent) -> Action {
+    if state.confirming_stop {
+        match key.code {
+            KeyCode::Esc => Action::Quit,
+            _ => {
+                state.confirming_stop = false;
+                Action::None
+            }
         }
-        _ => Action::None,
+    } else {
+        match key.code {
+            KeyCode::Esc => {
+                state.confirming_stop = true;
+                Action::None
+            }
+            KeyCode::Char(' ') => {
+                // TODO: mark take + open name modal
+                Action::None
+            }
+            _ => Action::None,
+        }
     }
 }

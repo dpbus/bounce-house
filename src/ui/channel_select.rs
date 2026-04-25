@@ -54,7 +54,7 @@ pub fn draw(frame: &mut Frame, state: &ChannelSelectState) {
             };
 
             let mut spans = vec![Span::styled(format!("{} Ch {:>2}  ", marker, i), row_style)];
-            spans.extend(meter_spans(level, 20));
+            spans.extend(meter_spans(level, None, 20));
 
             ListItem::new(Line::from(spans))
         })
