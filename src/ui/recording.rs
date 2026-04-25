@@ -5,15 +5,18 @@ use std::time::Instant;
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem};
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::audio_interface::AudioInterface;
 use crate::capture::{self, CaptureHandle};
 use crate::ui::Action;
-use crate::ui::widgets::meter_spans;
+use crate::ui::widgets::{key_hint, vertical_meter};
 
-const FAST_DECAY: f32 = 0.93;
-const SLOW_DECAY: f32 = 0.97;
+const FAST_DECAY: f32 = 0.976;
+const SLOW_DECAY: f32 = 0.990;
+
+const METER_WIDTH: usize = 2;
+const METER_MAX_HEIGHT: u16 = 20;
 
 pub struct RecordingState {
     pub interface: AudioInterface,
@@ -65,64 +68,96 @@ impl RecordingState {
 }
 
 pub fn draw(frame: &mut Frame, state: &RecordingState) {
-    let elapsed = state.started_at.elapsed().as_secs();
-    let mins = elapsed / 60;
-    let secs = elapsed % 60;
+    let block = recording_block(state);
+    let inner = block.inner(frame.area());
+    frame.render_widget(block, frame.area());
 
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(5),       // meter strips
+            Constraint::Length(1),    // spacer
+            Constraint::Length(1),    // path
+            Constraint::Length(1),    // footer
+        ])
+        .split(inner);
+
+    draw_meter_strips(frame, chunks[0], state);
+    frame.render_widget(path_line(state), chunks[2]);
+    frame.render_widget(footer_line(state), chunks[3]);
+}
+
+fn recording_block(state: &RecordingState) -> Block<'static> {
+    let elapsed = state.started_at.elapsed().as_secs();
     let title = format!(
         " ● Recording — {} — {:02}:{:02} ",
         state.interface.name(),
-        mins,
-        secs,
+        elapsed / 60,
+        elapsed % 60,
     );
+    Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Red))
+}
 
-    let mut items: Vec<ListItem> = state
-        .channels
-        .iter()
-        .enumerate()
-        .map(|(i, &ch)| {
-            let level = state.display_levels[i];
-            let peak = state.peak_holds[i];
-            let mut spans = vec![Span::raw(format!("Ch {:>2}  ", ch))];
-            spans.extend(meter_spans(level, Some(peak), 30));
-            ListItem::new(Line::from(spans))
-        })
-        .collect();
-
-    items.push(ListItem::new(""));
-    items.push(ListItem::new(Line::from(vec![
+fn path_line(state: &RecordingState) -> Paragraph<'static> {
+    Paragraph::new(Line::from(vec![
         Span::styled("Saving to: ", Style::default().fg(Color::DarkGray)),
         Span::raw(state.output_path.display().to_string()),
-    ])));
-    items.push(ListItem::new(""));
+    ]))
+}
 
+fn footer_line(state: &RecordingState) -> Paragraph<'static> {
+    let mut spans = Vec::new();
     if state.confirming_stop {
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(
-                "Stop recording?  ",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("[Esc]", Style::default().fg(Color::Cyan)),
-            Span::raw(" yes  "),
-            Span::styled("[any other key]", Style::default().fg(Color::DarkGray)),
-            Span::raw(" no"),
-        ])));
+        spans.push(Span::styled(
+            "Stop recording?  ",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        ));
+        spans.extend(key_hint("Esc", "yes  ", Color::Cyan));
+        spans.extend(key_hint("any other key", "no", Color::DarkGray));
     } else {
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled("[Esc]", Style::default().fg(Color::Cyan)),
-            Span::raw(" stop and save  "),
-            Span::styled("[Space]", Style::default().fg(Color::DarkGray)),
-            Span::raw(" mark take (coming soon)"),
-        ])));
+        spans.extend(key_hint("Esc", "stop and save  ", Color::Cyan));
+        spans.extend(key_hint("Space", "mark take (coming soon)", Color::DarkGray));
+    }
+    Paragraph::new(Line::from(spans))
+}
+
+fn draw_meter_strips(frame: &mut Frame, area: Rect, state: &RecordingState) {
+    let n = state.channels.len();
+    if n == 0 {
+        return;
     }
 
-    let list = List::new(items).block(
-        Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Red)),
-    );
-    frame.render_widget(list, frame.area());
+    let strips = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(vec![Constraint::Ratio(1, n as u32); n])
+        .split(area);
+
+    for (i, &ch) in state.channels.iter().enumerate() {
+        channel_strip(
+            frame,
+            strips[i],
+            ch,
+            state.display_levels[i],
+            state.peak_holds[i],
+        );
+    }
+}
+
+fn channel_strip(frame: &mut Frame, area: Rect, channel: u8, level: f32, peak_hold: f32) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Max(METER_MAX_HEIGHT)])
+        .split(area);
+
+    let header = Paragraph::new(format!("Ch {:>2}", channel)).alignment(Alignment::Center);
+    frame.render_widget(header, chunks[0]);
+
+    let lines = vertical_meter(level, Some(peak_hold), METER_WIDTH, chunks[1].height as usize);
+    let meter = Paragraph::new(lines).alignment(Alignment::Center);
+    frame.render_widget(meter, chunks[1]);
 }
 
 pub fn handle_input(state: &mut RecordingState, key: KeyEvent) -> Action {

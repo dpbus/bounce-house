@@ -62,7 +62,7 @@ fn run_loop(
         })?;
 
         // Handle input
-        if event::poll(std::time::Duration::from_millis(50))? {
+        if event::poll(std::time::Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 let action = match &mut screen {
                     Screen::DeviceSelect(state) => device_select::handle_input(state, key),
