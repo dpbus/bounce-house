@@ -1,50 +1,37 @@
-use crate::input::Input;
-use crate::take::Take;
-use chrono::{DateTime, Local};
 use std::path::PathBuf;
 
+use chrono::{DateTime, Local};
+
+use crate::channel::Channel;
+use crate::units::ChannelIndex;
+
 pub struct Session {
-    pub sample_rate: u32,
+    pub channels: Vec<Channel>,
     pub raw_dir: PathBuf,
-    pub bounce_dir: PathBuf,
-    pub inputs: Vec<Input>,
-    pub takes: Vec<Take>,
-    pub cursor: u64,
     pub started_at: DateTime<Local>,
 }
 
 impl Session {
-    pub fn new(sample_rate: u32, raw_dir: PathBuf, bounce_dir: PathBuf, num_inputs: u8) -> Session {
-        let started_at = Local::now();
-        let inputs = (0..num_inputs).map(Input::new).collect();
-
+    pub fn new(channel_count: u16, raw_dir: PathBuf) -> Self {
+        let channels = (0..channel_count)
+            .map(|i| Channel::new(ChannelIndex(i)))
+            .collect();
         Session {
-            sample_rate,
+            channels,
             raw_dir,
-            bounce_dir,
-            inputs,
-            takes: Vec::new(),
-            cursor: 0,
-            started_at,
+            started_at: Local::now(),
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    pub fn channel(&self, idx: ChannelIndex) -> Option<&Channel> {
+        self.channels.get(idx.as_usize())
+    }
 
-    #[test]
-    fn test_new_session_defaults() {
-        let session = Session::new(
-            48000,
-            PathBuf::from("/tmp/raw"),
-            PathBuf::from("/tmp/bounces"),
-            4,
-        );
-        assert_eq!(session.sample_rate, 48000);
-        assert_eq!(session.inputs.len(), 4);
-        assert_eq!(session.takes.len(), 0);
-        assert_eq!(session.cursor, 0);
+    pub fn channel_mut(&mut self, idx: ChannelIndex) -> Option<&mut Channel> {
+        self.channels.get_mut(idx.as_usize())
+    }
+
+    pub fn armed(&self) -> impl Iterator<Item = &Channel> + '_ {
+        self.channels.iter().filter(|c| c.armed)
     }
 }
