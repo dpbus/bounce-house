@@ -1,95 +1,238 @@
-pub mod channel_select;
-pub mod device_select;
-pub mod recording;
-pub mod widgets;
+mod channel_picker;
+mod device_picker;
+mod main_view;
+mod widgets;
+
+use std::io::{self, stdout};
+use std::path::PathBuf;
+use std::time::Duration;
 
 use crossterm::{
-    event::{self, Event},
+    event::{self, Event, KeyCode, KeyEvent},
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
-use std::io::{self, stdout};
 
-use crate::ui::channel_select::ChannelSelectState;
-use crate::ui::device_select::DeviceSelectState;
-use crate::ui::recording::RecordingState;
-
-enum Screen {
-    DeviceSelect(DeviceSelectState),
-    ChannelSelect(ChannelSelectState),
-    Recording(RecordingState),
-}
-
-pub enum Action {
-    None,
-    Quit,
-    NextScreen,
-}
+use crate::app::{App, AppState};
 
 pub fn run() -> io::Result<()> {
-    // Set up terminal
     terminal::enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let screen = Screen::DeviceSelect(DeviceSelectState::new());
+    let result = bootstrap(&mut terminal);
 
-    let result = run_loop(&mut terminal, screen);
-
-    // Restore terminal — always runs, even if the loop errored
     terminal::disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen)?;
 
     result
 }
 
-fn run_loop(
+fn bootstrap(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    let device = match device_picker::pick(terminal) {
+        Ok(d) => d,
+        Err(e) if e.kind() == io::ErrorKind::Interrupted => return Ok(()),
+        Err(e) => return Err(e),
+    };
+
+    let raw_dir = PathBuf::from("./recordings");
+    std::fs::create_dir_all(&raw_dir)?;
+
+    let mut app = App::new(device, raw_dir);
+    main_loop(terminal, &mut app)
+}
+
+fn main_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    mut screen: Screen,
+    app: &mut App,
 ) -> io::Result<()> {
     loop {
-        // Per-frame state updates (UI-side decay, etc.)
-        if let Screen::Recording(state) = &mut screen {
-            state.update_display();
-        }
+        app.tick_display();
 
-        // Draw
-        terminal.draw(|frame| match &screen {
-            Screen::DeviceSelect(state) => device_select::draw(frame, state),
-            Screen::ChannelSelect(state) => channel_select::draw(frame, state),
-            Screen::Recording(state) => recording::draw(frame, state),
+        terminal.draw(|frame| {
+            main_view::draw(frame, app);
+            if matches!(app.state, AppState::PickingChannel { .. }) {
+                channel_picker::draw(frame, app);
+            }
         })?;
 
-        // Handle input
-        if event::poll(std::time::Duration::from_millis(16))? {
+        if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
-                let action = match &mut screen {
-                    Screen::DeviceSelect(state) => device_select::handle_input(state, key),
-                    Screen::ChannelSelect(state) => channel_select::handle_input(state, key),
-                    Screen::Recording(state) => recording::handle_input(state, key),
-                };
-
-                match action {
-                    Action::Quit => break,
-                    Action::NextScreen => {
-                        screen = match screen {
-                            Screen::DeviceSelect(state) => {
-                                let interface = state.take_selected();
-                                Screen::ChannelSelect(ChannelSelectState::new(interface))
-                            }
-                            Screen::ChannelSelect(state) => {
-                                let channels = state.selected_channels();
-                                Screen::Recording(RecordingState::new(state.interface, channels))
-                            }
-                            Screen::Recording(_) => break,
-                        };
-                    }
-                    Action::None => {}
+                match decide(&app.state, key) {
+                    KeyAction::Quit => break,
+                    KeyAction::None => {}
+                    other => apply(app, other),
                 }
             }
         }
     }
-
     Ok(())
+}
+
+/// Decisions made by inspecting key + current state. Kept separate from
+/// mutation so the borrow against `&app.state` doesn't conflict with the
+/// `&mut app` we need to act.
+enum KeyAction {
+    None,
+    Quit,
+    StartRecording,
+    BeginConfirmStop,
+    CancelConfirmStop,
+    StopRecording,
+    OpenPicker,
+    ClosePicker,
+    PickerCursorUp,
+    PickerCursorDown,
+    PickerToggleArmed,
+    PickerStartRename,
+    PickerCancelRename,
+    PickerCommitRename,
+    PickerAppendChar(char),
+    PickerBackspace,
+}
+
+fn decide(state: &AppState, key: KeyEvent) -> KeyAction {
+    use KeyCode::*;
+    match state {
+        AppState::Idle => match key.code {
+            Char('q') | Char('Q') | Esc => KeyAction::Quit,
+            Char('r') | Char('R') => KeyAction::StartRecording,
+            Char('c') | Char('C') => KeyAction::OpenPicker,
+            _ => KeyAction::None,
+        },
+        AppState::Recording { confirming_stop: false, .. } => match key.code {
+            Esc => KeyAction::BeginConfirmStop,
+            _ => KeyAction::None,
+        },
+        AppState::Recording { confirming_stop: true, .. } => match key.code {
+            Esc => KeyAction::StopRecording,
+            _ => KeyAction::CancelConfirmStop,
+        },
+        AppState::PickingChannel { renaming: None, .. } => match key.code {
+            Esc => KeyAction::ClosePicker,
+            Up | Char('k') => KeyAction::PickerCursorUp,
+            Down | Char('j') => KeyAction::PickerCursorDown,
+            Char(' ') => KeyAction::PickerToggleArmed,
+            Tab => KeyAction::PickerStartRename,
+            _ => KeyAction::None,
+        },
+        AppState::PickingChannel { renaming: Some(_), .. } => match key.code {
+            Esc => KeyAction::PickerCancelRename,
+            Enter => KeyAction::PickerCommitRename,
+            Backspace => KeyAction::PickerBackspace,
+            Char(c) => KeyAction::PickerAppendChar(c),
+            _ => KeyAction::None,
+        },
+    }
+}
+
+fn apply(app: &mut App, action: KeyAction) {
+    match action {
+        KeyAction::None | KeyAction::Quit => {}
+        KeyAction::StartRecording => {
+            let _ = app.start_recording();
+        }
+        KeyAction::BeginConfirmStop => {
+            if let AppState::Recording { confirming_stop, .. } = &mut app.state {
+                *confirming_stop = true;
+            }
+        }
+        KeyAction::CancelConfirmStop => {
+            if let AppState::Recording { confirming_stop, .. } = &mut app.state {
+                *confirming_stop = false;
+            }
+        }
+        KeyAction::StopRecording => app.stop_recording(),
+        KeyAction::OpenPicker => {
+            app.state = AppState::PickingChannel {
+                cursor: 0,
+                renaming: None,
+            };
+        }
+        KeyAction::ClosePicker => {
+            app.state = AppState::Idle;
+        }
+        KeyAction::PickerCursorUp => {
+            if let AppState::PickingChannel { cursor, .. } = &mut app.state {
+                if *cursor > 0 {
+                    *cursor -= 1;
+                }
+            }
+        }
+        KeyAction::PickerCursorDown => {
+            let max = app.session.channels.len().saturating_sub(1);
+            if let AppState::PickingChannel { cursor, .. } = &mut app.state {
+                if *cursor < max {
+                    *cursor += 1;
+                }
+            }
+        }
+        KeyAction::PickerToggleArmed => {
+            let idx = picker_cursor_index(app);
+            if let Some(idx) = idx {
+                app.toggle_armed(idx);
+            }
+        }
+        KeyAction::PickerStartRename => {
+            let current = picker_cursor_label(app).unwrap_or_default();
+            if let AppState::PickingChannel { renaming, .. } = &mut app.state {
+                *renaming = Some(current);
+            }
+        }
+        KeyAction::PickerCancelRename => {
+            if let AppState::PickingChannel { renaming, .. } = &mut app.state {
+                *renaming = None;
+            }
+        }
+        KeyAction::PickerCommitRename => {
+            let (idx, label) = match (&app.state, picker_cursor_index(app)) {
+                (AppState::PickingChannel { renaming: Some(buf), .. }, Some(idx)) => {
+                    let label = if buf.trim().is_empty() {
+                        None
+                    } else {
+                        Some(buf.trim().to_string())
+                    };
+                    (Some(idx), label)
+                }
+                _ => (None, None),
+            };
+            if let Some(idx) = idx {
+                app.set_label(idx, label);
+            }
+            if let AppState::PickingChannel { renaming, .. } = &mut app.state {
+                *renaming = None;
+            }
+        }
+        KeyAction::PickerAppendChar(c) => {
+            if let AppState::PickingChannel { renaming: Some(buf), .. } = &mut app.state {
+                buf.push(c);
+            }
+        }
+        KeyAction::PickerBackspace => {
+            if let AppState::PickingChannel { renaming: Some(buf), .. } = &mut app.state {
+                buf.pop();
+            }
+        }
+    }
+}
+
+fn picker_cursor_index(app: &App) -> Option<crate::units::ChannelIndex> {
+    if let AppState::PickingChannel { cursor, .. } = &app.state {
+        app.session.channels.get(*cursor).map(|c| c.index)
+    } else {
+        None
+    }
+}
+
+fn picker_cursor_label(app: &App) -> Option<String> {
+    if let AppState::PickingChannel { cursor, .. } = &app.state {
+        app.session
+            .channels
+            .get(*cursor)
+            .and_then(|c| c.label.clone())
+            .or(Some(String::new()))
+    } else {
+        None
+    }
 }
