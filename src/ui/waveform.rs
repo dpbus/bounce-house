@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, Borders};
 use crate::app::{App, TICK_FPS};
 use crate::ui::widgets::{
     BAND_GREEN, BAND_GREEN_DIM, BAND_RED, BAND_RED_DIM, BAND_YELLOW, BAND_YELLOW_DIM,
-    band_thresholds, linear_to_db_fraction,
+    band_thresholds, linear_to_db_fraction, take_color,
 };
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
@@ -28,26 +28,34 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    // Top and bottom rows reserved for take markers; canvas in between.
+    // Top and bottom rows reserved for marker glyphs; canvas in between.
     let canvas_area = Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 2);
     let top_marker_y = inner.y;
     let bottom_marker_y = inner.bottom() - 1;
 
-    let width = canvas_area.width as usize;
+    // Braille's 2 dot columns per cell give 2x horizontal resolution.
+    let cols = canvas_area.width as usize * 2;
     let height = canvas_area.height as usize;
 
-    // Braille markers pack 2x4 dots per cell — run at 2x horizontal resolution.
-    let pixel_width = width * 2;
     let layout = WaveformLayout::new(
         app.level_history.len(),
         app.waveform_window_secs,
-        pixel_width,
+        cols,
     );
     let amps = waveform_amps(&app.level_history, &layout);
-    let take_columns: Vec<usize> = app
-        .take_ticks
+    let marker_columns: Vec<(Color, usize)> = app
+        .timeline
+        .markers()
         .iter()
-        .filter_map(|&t| layout.tick_to_column(t, app.total_ticks))
+        .filter_map(|m| {
+            let col = layout.tick_to_column(m.tick, app.total_ticks)?;
+            let color = app
+                .timeline
+                .marker_color_index(m.tick)
+                .map(|i| take_color(i as usize))
+                .unwrap_or(Color::DarkGray);
+            Some((color, col))
+        })
         .collect();
     let (warn, clip) = band_thresholds();
     let (warn, clip) = (warn as f64, clip as f64);
@@ -57,18 +65,18 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let canvas = Canvas::default()
         .marker(Marker::Braille)
-        .x_bounds([0.0, pixel_width as f64])
+        .x_bounds([0.0, cols as f64])
         .y_bounds([-1.0, 1.0])
         .paint(move |ctx| {
             for (col, opt) in amps.iter().enumerate() {
                 let Some((amp, recorded)) = opt else { continue };
                 let half = (linear_to_db_fraction(*amp) as f64).max(min_y);
-                let x = col as f64;
                 let (green, yellow, red) = if *recorded {
                     (BAND_GREEN, BAND_YELLOW, BAND_RED)
                 } else {
                     (BAND_GREEN_DIM, BAND_YELLOW_DIM, BAND_RED_DIM)
                 };
+                let x = col as f64;
 
                 let g_top = half.min(warn);
                 ctx.draw(&CanvasLine {
@@ -95,16 +103,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         });
     frame.render_widget(canvas, canvas_area);
 
-    // ▌/▐ pick left vs right dot column inside the terminal cell, so
-    // markers shift at the same half-cell cadence as the waveform.
-    let style = Style::default().fg(Color::White);
     let buf = frame.buffer_mut();
-    for canvas_col in take_columns {
+    for &(color, canvas_col) in &marker_columns {
         let term_col = inner.x + (canvas_col / 2) as u16;
         if term_col >= inner.right() {
             continue;
         }
         let glyph = if canvas_col % 2 == 0 { "▌" } else { "▐" };
+        let style = Style::default().fg(color);
         buf.set_string(term_col, top_marker_y, glyph, style);
         buf.set_string(term_col, bottom_marker_y, glyph, style);
     }
@@ -113,19 +119,19 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 /// Maps the rotating level history onto canvas columns. Buckets anchor to
 /// absolute history indices, so each is sealed once its time has passed.
 struct WaveformLayout {
-    pixel_width: usize,
+    cols: usize,
     history_len: usize,
     bucket_size: usize,
     leftmost: i64,
 }
 
 impl WaveformLayout {
-    fn new(history_len: usize, window_secs: u64, pixel_width: usize) -> Self {
+    fn new(history_len: usize, window_secs: u64, cols: usize) -> Self {
         let visible_ticks = window_secs as usize * TICK_FPS;
-        let bucket_size = (visible_ticks / pixel_width).max(1);
+        let bucket_size = (visible_ticks / cols).max(1);
         let latest_bucket = (history_len / bucket_size) as i64;
-        let leftmost = latest_bucket - (pixel_width as i64 - 1);
-        Self { pixel_width, history_len, bucket_size, leftmost }
+        let leftmost = latest_bucket - (cols as i64 - 1);
+        Self { cols, history_len, bucket_size, leftmost }
     }
 
     /// History range for column `col`, or `None` if outside the visible
@@ -150,7 +156,7 @@ impl WaveformLayout {
         let history_index = (tick - oldest_visible) as usize;
         let bucket_idx = (history_index / self.bucket_size) as i64;
         let col = bucket_idx - self.leftmost;
-        (col >= 0 && (col as usize) < self.pixel_width).then_some(col as usize)
+        (col >= 0 && (col as usize) < self.cols).then_some(col as usize)
     }
 }
 
@@ -160,7 +166,7 @@ fn waveform_amps(
     history: &VecDeque<(f32, bool)>,
     layout: &WaveformLayout,
 ) -> Vec<Option<(f32, bool)>> {
-    (0..layout.pixel_width)
+    (0..layout.cols)
         .map(|col| {
             let (start, end) = layout.column_range(col)?;
             let (amp, recorded) = history.range(start..end).fold(

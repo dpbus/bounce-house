@@ -2,6 +2,7 @@ mod app;
 mod audio;
 mod channel;
 mod session;
+mod timeline;
 mod ui;
 mod units;
 

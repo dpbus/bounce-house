@@ -18,6 +18,19 @@ pub const BAND_GREEN_DIM: Color = Color::Rgb(0, 80, 0);
 pub const BAND_YELLOW_DIM: Color = Color::Rgb(80, 80, 0);
 pub const BAND_RED_DIM: Color = Color::Rgb(80, 0, 0);
 
+pub const TAKE_COLORS: &[Color] = &[
+    Color::Rgb(60, 230, 80),
+    Color::Rgb(255, 220, 30),
+    Color::Rgb(255, 130, 30),
+    Color::Rgb(255, 60, 70),
+    Color::Rgb(195, 80, 220),
+    Color::Rgb(60, 175, 255),
+];
+
+pub fn take_color(idx: usize) -> Color {
+    TAKE_COLORS[idx % TAKE_COLORS.len()]
+}
+
 const SILENCE_LEVEL: f32 = 0.0001;
 const SILENCE_DB: f32 = -80.0;
 

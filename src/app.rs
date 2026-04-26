@@ -6,6 +6,7 @@ use chrono::Local;
 
 use crate::audio::{ArmedChannel, Device, Engine, Recording, RecordingConfig};
 use crate::session::Session;
+use crate::timeline::Timeline;
 use crate::units::{ChannelIndex, SamplePosition};
 
 const FAST_DECAY: f32 = 0.976;
@@ -29,8 +30,7 @@ pub struct App {
     pub peak_holds: Vec<f32>,
     pub level_history: VecDeque<(f32, bool)>,
     pub total_ticks: u64,
-    /// Marker positions in `total_ticks` units (recording start/stop + Space).
-    pub take_ticks: Vec<u64>,
+    pub timeline: Timeline,
     pub waveform_window_secs: u64,
 }
 
@@ -66,7 +66,7 @@ impl App {
             peak_holds: vec![0.0; n],
             level_history: VecDeque::with_capacity(MAX_HISTORY_ENTRIES + 1),
             total_ticks: 0,
-            take_ticks: Vec::new(),
+            timeline: Timeline::new(),
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
         }
     }
@@ -127,7 +127,7 @@ impl App {
             },
         );
 
-        self.take_ticks.push(self.total_ticks);
+        self.timeline.mark(self.total_ticks);
         self.state = AppState::Recording {
             recording,
             started_at: Instant::now(),
@@ -136,10 +136,26 @@ impl App {
         Ok(())
     }
 
-    pub fn mark_take(&mut self) {
-        if matches!(self.state, AppState::Recording { .. }) {
-            self.take_ticks.push(self.total_ticks);
+    pub fn drop_marker(&mut self) {
+        if self.is_recording_active() {
+            self.timeline.mark(self.total_ticks);
         }
+    }
+
+    pub fn mark_and_name(&mut self) {
+        if self.is_recording_active() {
+            self.timeline.mark_and_name(self.total_ticks);
+        }
+    }
+
+    pub fn name_last_unbound(&mut self) {
+        if self.is_recording_active() {
+            self.timeline.name_last_unbound();
+        }
+    }
+
+    fn is_recording_active(&self) -> bool {
+        matches!(self.state, AppState::Recording { confirming_stop: false, .. })
     }
 
     pub fn stop_recording(&mut self) {
@@ -149,7 +165,7 @@ impl App {
         // Detach producer from audio thread first; this is synchronous so by the
         // time it returns, no more samples will land in the rtrb.
         self.engine.stop_recording();
-        self.take_ticks.push(self.total_ticks);
+        self.timeline.mark(self.total_ticks);
         // Replacing the state drops the Recording, whose Drop joins the writer
         // thread (which drains the rtrb and finalizes the WAV).
         self.state = AppState::Idle;

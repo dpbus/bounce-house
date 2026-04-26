@@ -60,7 +60,7 @@ fn main_loop(
 
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
-                match decide(&app.state, key) {
+                match decide(app, key) {
                     KeyAction::Quit => break,
                     KeyAction::None => {}
                     other => apply(app, other),
@@ -84,7 +84,13 @@ enum KeyAction {
     OpenPicker,
     ClosePicker,
     CycleWaveformWindow,
-    MarkTake,
+    DropMarker,
+    MarkAndName,
+    NameLastUnbound,
+    CancelTakeNaming,
+    CommitTakeNaming,
+    TakeNameAppendChar(char),
+    TakeNameBackspace,
     PickerCursorUp,
     PickerCursorDown,
     PickerToggleArmed,
@@ -95,9 +101,18 @@ enum KeyAction {
     PickerBackspace,
 }
 
-fn decide(state: &AppState, key: KeyEvent) -> KeyAction {
+fn decide(app: &App, key: KeyEvent) -> KeyAction {
     use KeyCode::*;
-    match state {
+    if matches!(app.state, AppState::Recording { .. }) && app.timeline.is_naming_take() {
+        return match key.code {
+            Esc => KeyAction::CancelTakeNaming,
+            Enter => KeyAction::CommitTakeNaming,
+            Backspace => KeyAction::TakeNameBackspace,
+            Char(c) => KeyAction::TakeNameAppendChar(c),
+            _ => KeyAction::None,
+        };
+    }
+    match &app.state {
         AppState::Idle => match key.code {
             Char('q') | Char('Q') | Esc => KeyAction::Quit,
             Char('r') | Char('R') => KeyAction::StartRecording,
@@ -108,7 +123,9 @@ fn decide(state: &AppState, key: KeyEvent) -> KeyAction {
         AppState::Recording { confirming_stop: false, .. } => match key.code {
             Esc => KeyAction::BeginConfirmStop,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
-            Char(' ') => KeyAction::MarkTake,
+            Char(' ') => KeyAction::DropMarker,
+            Char('t') | Char('T') => KeyAction::MarkAndName,
+            Char('n') | Char('N') => KeyAction::NameLastUnbound,
             _ => KeyAction::None,
         },
         AppState::Recording { confirming_stop: true, .. } => match key.code {
@@ -160,7 +177,13 @@ fn apply(app: &mut App, action: KeyAction) {
             app.state = AppState::Idle;
         }
         KeyAction::CycleWaveformWindow => app.cycle_waveform_window(),
-        KeyAction::MarkTake => app.mark_take(),
+        KeyAction::DropMarker => app.drop_marker(),
+        KeyAction::MarkAndName => app.mark_and_name(),
+        KeyAction::NameLastUnbound => app.name_last_unbound(),
+        KeyAction::CancelTakeNaming => app.timeline.cancel(),
+        KeyAction::CommitTakeNaming => app.timeline.commit(),
+        KeyAction::TakeNameAppendChar(c) => app.timeline.append_char(c),
+        KeyAction::TakeNameBackspace => app.timeline.backspace(),
         KeyAction::PickerCursorUp => {
             if let AppState::PickingChannel { cursor, .. } = &mut app.state {
                 if *cursor > 0 {

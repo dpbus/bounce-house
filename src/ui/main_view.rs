@@ -2,10 +2,10 @@ use chrono::Local;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
-use crate::app::{App, AppState};
+use crate::app::{App, AppState, TICK_FPS};
 use crate::channel::Channel;
 use crate::ui::waveform;
-use crate::ui::widgets::{key_hint, vertical_meter};
+use crate::ui::widgets::{key_hint, take_color, vertical_meter};
 
 const TOP_BAR_HEIGHT: u16 = 12;
 const WAVEFORM_HEIGHT: u16 = 18;
@@ -106,7 +106,7 @@ fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            vec![
+            let mut lines = vec![
                 Line::from(Span::styled(
                     format!("● {:02}:{:02}", elapsed / 60, elapsed % 60),
                     Style::default()
@@ -115,7 +115,46 @@ fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
                 )),
                 Line::from(""),
                 labeled("Folder: ", dirname),
-            ]
+            ];
+
+            let take_name_buf = app.timeline.take_name_buf();
+            let takes = app.timeline.takes();
+            if !takes.is_empty() || take_name_buf.is_some() {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    "Takes",
+                    Style::default().fg(Color::DarkGray),
+                )));
+                // Naming buffer first, then named takes newest-first, so
+                // overflow drops the oldest off the bottom.
+                if let Some(buf) = take_name_buf {
+                    let next_color = takes.last().map(|t| t.color_index + 1).unwrap_or(0);
+                    let color = take_color(next_color as usize);
+                    lines.push(Line::from(vec![
+                        Span::styled("  ▌ ", Style::default().fg(color)),
+                        Span::raw(buf.to_string()),
+                        Span::styled(
+                            "_",
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::SLOW_BLINK),
+                        ),
+                    ]));
+                }
+                for take in takes.iter().rev() {
+                    let color = take_color(take.color_index as usize);
+                    let secs = take.end_tick.saturating_sub(take.start_tick) / TICK_FPS as u64;
+                    lines.push(Line::from(vec![
+                        Span::styled("  ▌ ", Style::default().fg(color)),
+                        Span::raw(take.name.clone()),
+                        Span::styled(
+                            format!(" ({}:{:02})", secs / 60, secs % 60),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ]));
+                }
+            }
+            lines
         }
     };
     frame.render_widget(Paragraph::new(lines), inner);
@@ -221,6 +260,18 @@ fn channel_strip(
 
 fn footer_line(app: &App) -> Line<'static> {
     let mut spans = Vec::new();
+    let naming_take = matches!(app.state, AppState::Recording { .. }) && app.timeline.is_naming_take();
+    if naming_take {
+        spans.push(Span::styled(
+            "Naming take  ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.extend(key_hint("Enter", "save  ", Color::Cyan));
+        spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
+        return Line::from(spans);
+    }
     match &app.state {
         AppState::Idle => {
             spans.extend(key_hint("R", "record  ", Color::Cyan));
@@ -232,9 +283,11 @@ fn footer_line(app: &App) -> Line<'static> {
             confirming_stop: false,
             ..
         } => {
-            spans.extend(key_hint("Esc", "stop  ", Color::Cyan));
-            spans.extend(key_hint("W", "waveform window  ", Color::Cyan));
-            spans.extend(key_hint("Space", "mark take", Color::Cyan));
+            spans.extend(key_hint("T", "take  ", Color::Cyan));
+            spans.extend(key_hint("Space", "mark  ", Color::Cyan));
+            spans.extend(key_hint("N", "name last  ", Color::Cyan));
+            spans.extend(key_hint("W", "window  ", Color::Cyan));
+            spans.extend(key_hint("Esc", "stop", Color::DarkGray));
         }
         AppState::Recording {
             confirming_stop: true,
