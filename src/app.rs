@@ -250,12 +250,14 @@ impl App {
         let mut new_job: Option<BounceJob> = None;
         if let Some(r) = &mut self.recording {
             if r.timeline.create_take(trimmed) {
+                let flushed_samples = r.flushed_samples();
                 if let Some(take) = r.timeline.takes().last() {
                     new_job = Some(BounceJob {
                         take: take.clone(),
                         sample_rate,
                         output_dir: r.output_dir.clone(),
                         channel_files: r.channel_files.clone(),
+                        flushed_samples,
                     });
                 }
             }
