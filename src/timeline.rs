@@ -1,7 +1,9 @@
+#[derive(Clone, Copy, Debug)]
 pub struct Marker {
     pub tick: u64,
 }
 
+#[derive(Clone, Debug)]
 pub struct Take {
     pub name: String,
     pub start_tick: u64,
@@ -9,6 +11,7 @@ pub struct Take {
     pub color_index: u8,
 }
 
+#[derive(Default)]
 pub struct Timeline {
     markers: Vec<Marker>,
     takes: Vec<Take>,
