@@ -123,8 +123,8 @@ fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
             ..
         } => {
             let elapsed = started_at.elapsed().as_secs();
-            let filename = recording
-                .output_path()
+            let dirname = recording
+                .output_dir()
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
@@ -136,7 +136,7 @@ fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
                         .add_modifier(Modifier::BOLD),
                 )),
                 Line::from(""),
-                labeled("File: ", filename),
+                labeled("Folder: ", dirname),
             ]
         }
         AppState::PickingChannel { .. } => vec![

@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use chrono::Local;
 
-use crate::audio::{Device, Engine, Recording, RecordingConfig};
+use crate::audio::{ArmedChannel, Device, Engine, Recording, RecordingConfig};
 use crate::session::Session;
 use crate::units::{ChannelIndex, SamplePosition};
 
@@ -97,22 +97,26 @@ impl App {
         if !matches!(self.state, AppState::Idle) {
             return Err(AppError::NotRecording);
         }
-        let armed: Vec<ChannelIndex> = self.session.armed().map(|c| c.index).collect();
+        let armed: Vec<ArmedChannel> = self
+            .session
+            .armed()
+            .map(|c| ArmedChannel {
+                index: c.index,
+                label: c.label.clone(),
+            })
+            .collect();
         if armed.is_empty() {
             return Err(AppError::NothingArmed);
         }
 
-        let timestamp = Local::now().format("%Y-%m-%d-%H%M%S");
-        let output_path = self
-            .session
-            .raw_dir
-            .join(format!("recording-{}.wav", timestamp));
+        let timestamp = Local::now().format("%Y-%m-%d-%H%M%S").to_string();
+        let output_dir = self.session.raw_dir.join(&timestamp);
 
         let consumer = self.engine.start_recording();
         let recording = Recording::start(
             consumer,
             RecordingConfig {
-                output_path,
+                output_dir,
                 sample_rate: self.engine.sample_rate(),
                 total_channel_count: self.engine.channel_count(),
                 armed,
