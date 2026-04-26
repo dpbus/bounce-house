@@ -157,8 +157,10 @@ impl App {
         // Detach producer from audio thread first; this is synchronous so by
         // the time it returns, no more samples will land in the rtrb.
         self.engine.stop_recording();
+        let now = Local::now();
         if let Some(r) = &mut self.recording {
             r.timeline.mark(self.total_ticks);
+            r.stopped_at = Some(now);
         }
         // Dropping the writer joins its thread (drains rtrb, finalizes WAV).
         self.writer = None;
@@ -166,7 +168,7 @@ impl App {
     }
 
     pub fn drop_marker(&mut self) {
-        if !self.can_mutate_timeline() {
+        if !self.can_mark() {
             return;
         }
         let tick = self.total_ticks;
@@ -176,7 +178,7 @@ impl App {
     }
 
     pub fn mark_and_name(&mut self) {
-        if !self.can_mutate_timeline() {
+        if !self.can_mark() {
             return;
         }
         let tick = self.total_ticks;
@@ -190,7 +192,7 @@ impl App {
     }
 
     pub fn name_take(&mut self) {
-        if !self.can_mutate_timeline() {
+        if !matches!(self.state, AppState::Default) {
             return;
         }
         if !self.current_timeline().is_some_and(|t| t.last_marker_unbound()) {
@@ -203,7 +205,7 @@ impl App {
     }
 
     pub fn delete_last_marker(&mut self) {
-        if !self.can_mutate_timeline() {
+        if !self.can_mark() {
             return;
         }
         if let Some(t) = self.current_timeline_mut() {
@@ -289,9 +291,9 @@ impl App {
         self.engine.sample_position()
     }
 
-    /// Whether marker/take mutations from key actions (Space/T/N/Backspace)
-    /// are allowed: must be actively recording with no overlay open.
-    fn can_mutate_timeline(&self) -> bool {
+    /// Whether marker-list mutations (Space, T, Backspace) are allowed:
+    /// actively recording with no overlay open.
+    fn can_mark(&self) -> bool {
         self.is_recording() && matches!(self.state, AppState::Default)
     }
 }

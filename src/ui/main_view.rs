@@ -84,6 +84,14 @@ fn footer_line(app: &App) -> Line<'static> {
         AppState::Default => {
             spans.extend(key_hint("R", "record  ", Color::Cyan));
             spans.extend(key_hint("C", "channels  ", Color::Cyan));
+            if let Some(timeline) = app.current_timeline() {
+                spans.extend(key_hint_when(
+                    timeline.last_marker_unbound(),
+                    "N",
+                    "name take  ",
+                    Color::Cyan,
+                ));
+            }
             spans.extend(key_hint("Q", "quit", Color::DarkGray));
         }
     }

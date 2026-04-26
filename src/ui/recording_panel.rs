@@ -1,4 +1,3 @@
-use chrono::Local;
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
@@ -19,16 +18,20 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         frame.render_widget(Paragraph::new(dim_status("Channel picker open")), inner);
         return;
     }
-    if !app.is_recording() {
+    let Some(recording) = &app.recording else {
         frame.render_widget(Paragraph::new(dim_status("Idle")), inner);
         return;
-    }
-    let recording = app.recording.as_ref().expect("is_recording implies Some");
+    };
 
-    let elapsed = (Local::now() - recording.started_at).num_seconds().max(0) as u64;
+    let elapsed = recording.elapsed_secs();
+    let (glyph, style) = if app.is_recording() {
+        ("●", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+    } else {
+        ("■", Style::default().fg(Color::DarkGray))
+    };
     let timer = Line::from(Span::styled(
-        format!("● {:02}:{:02}", elapsed / 60, elapsed % 60),
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        format!("{} {:02}:{:02}", glyph, elapsed / 60, elapsed % 60),
+        style,
     ));
     let dirname = recording
         .output_dir

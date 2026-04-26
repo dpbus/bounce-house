@@ -148,6 +148,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             Char('r') | Char('R') => KeyAction::StartRecording,
             Char('c') | Char('C') => KeyAction::OpenPicker,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
+            Char('n') | Char('N') => KeyAction::NameTake,
             _ => KeyAction::None,
         },
     }
