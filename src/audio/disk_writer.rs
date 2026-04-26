@@ -2,13 +2,15 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hound::{SampleFormat, WavSpec, WavWriter};
 
 use crate::units::{ChannelIndex, SampleRate};
+
+const FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 
 /// One armed channel — its position in the device's interleaved frame and
 /// its user-supplied label, used for the per-channel filename.
@@ -19,6 +21,7 @@ pub struct ArmedChannel {
 
 pub struct DiskWriter {
     channel_files: Vec<PathBuf>,
+    flushed_samples: Arc<AtomicU64>,
     stop_signal: Arc<AtomicBool>,
     writer_thread: Option<JoinHandle<()>>,
 }
@@ -45,9 +48,11 @@ impl DiskWriter {
             .collect();
 
         let stop_signal = Arc::new(AtomicBool::new(false));
+        let flushed_samples = Arc::new(AtomicU64::new(0));
 
         let writer_thread = {
             let stop_signal = stop_signal.clone();
+            let flushed_samples = flushed_samples.clone();
             let channel_files = channel_files.clone();
             thread::spawn(move || {
                 write_to_disk(
@@ -57,12 +62,14 @@ impl DiskWriter {
                     total_channel_count,
                     armed,
                     stop_signal,
+                    flushed_samples,
                 )
             })
         };
 
         DiskWriter {
             channel_files,
+            flushed_samples,
             stop_signal,
             writer_thread: Some(writer_thread),
         }
@@ -70,6 +77,10 @@ impl DiskWriter {
 
     pub fn channel_files(&self) -> &[PathBuf] {
         &self.channel_files
+    }
+
+    pub fn flushed_samples(&self) -> Arc<AtomicU64> {
+        self.flushed_samples.clone()
     }
 }
 
@@ -89,6 +100,7 @@ fn write_to_disk(
     total_channel_count: u16,
     armed: Vec<ArmedChannel>,
     stop_signal: Arc<AtomicBool>,
+    flushed_samples: Arc<AtomicU64>,
 ) {
     let total = total_channel_count as usize;
     let spec = WavSpec {
@@ -101,6 +113,8 @@ fn write_to_disk(
     let mut writers = open_writers(&channel_files, spec);
     let mut frame = vec![0.0f32; total];
     let mut filled = 0;
+    let mut samples_written: u64 = 0;
+    let mut last_flush = Instant::now();
 
     loop {
         while let Ok(sample) = consumer.pop() {
@@ -112,16 +126,35 @@ fn write_to_disk(
                         .write_sample(frame[ch.index.as_usize()])
                         .expect("Failed to write sample");
                 }
+                samples_written += 1;
                 filled = 0;
             }
         }
+
+        if last_flush.elapsed() >= FLUSH_INTERVAL {
+            flush_and_publish(&mut writers, samples_written, &flushed_samples);
+            last_flush = Instant::now();
+        }
+
         if stop_signal.load(Ordering::Relaxed) {
             break;
         }
         thread::sleep(Duration::from_millis(10));
     }
 
+    flush_and_publish(&mut writers, samples_written, &flushed_samples);
     finalize_writers(writers);
+}
+
+fn flush_and_publish(
+    writers: &mut [WavWriter<BufWriter<File>>],
+    samples_written: u64,
+    flushed_samples: &AtomicU64,
+) {
+    for w in writers {
+        w.flush().expect("Failed to flush WAV writer");
+    }
+    flushed_samples.store(samples_written, Ordering::Release);
 }
 
 fn open_writers(

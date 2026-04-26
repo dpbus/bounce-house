@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 use chrono::{DateTime, Local};
 
@@ -63,6 +65,10 @@ impl Recording {
 
     pub fn is_writing(&self) -> bool {
         self.writer.is_some()
+    }
+
+    pub fn flushed_samples(&self) -> Option<Arc<AtomicU64>> {
+        self.writer.as_ref().map(|w| w.flushed_samples())
     }
 
     /// Push a marker at the current absolute engine sample, converted to
