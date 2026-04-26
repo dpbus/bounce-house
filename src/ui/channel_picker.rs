@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, AppState};
 use crate::channel::Channel;
@@ -43,8 +43,13 @@ pub fn draw(frame: &mut Frame, app: &App) {
         })
         .collect();
 
+    // Stateful render with cursor pre-selected so ratatui auto-adjusts the
+    // viewport offset to keep it visible. Manual row highlighting is
+    // unaffected because we don't set highlight_style.
     let list = List::new(items);
-    frame.render_widget(list, chunks[0]);
+    let mut state = ListState::default();
+    state.select(Some(*cursor));
+    frame.render_stateful_widget(list, chunks[0], &mut state);
 
     frame.render_widget(Paragraph::new(footer_line(renaming)), chunks[1]);
 }
