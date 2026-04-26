@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use crate::app::{App, AppState, TICK_FPS};
 use crate::channel::Channel;
 use crate::ui::waveform;
-use crate::ui::widgets::{key_hint, take_color, vertical_meter};
+use crate::ui::widgets::{key_hint, key_hint_when, take_color, vertical_meter};
 
 const TOP_BAR_HEIGHT: u16 = 12;
 const WAVEFORM_HEIGHT: u16 = 18;
@@ -58,7 +58,7 @@ fn outer_block(app: &App) -> Block<'static> {
 }
 
 fn draw_session_panel(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Session");
+    let inner = panel(frame, area, "Session", None);
 
     let duration = Local::now() - app.session.started_at;
     let secs = duration.num_seconds().max(0);
@@ -90,7 +90,14 @@ fn draw_session_panel(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Recording");
+    let bottom_hint = app.timeline.is_naming_take().then(|| {
+        let mut spans = vec![Span::raw(" ")];
+        spans.extend(key_hint("Enter", "save  ", Color::Cyan));
+        spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
+        spans.push(Span::raw(" "));
+        Line::from(spans)
+    });
+    let inner = panel(frame, area, "Recording", bottom_hint);
 
     let lines = match &app.state {
         AppState::Idle => dim_status("Idle"),
@@ -160,12 +167,20 @@ fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn panel(frame: &mut Frame, area: Rect, title: &'static str) -> Rect {
-    let block = Block::default()
+fn panel(
+    frame: &mut Frame,
+    area: Rect,
+    title: &'static str,
+    bottom_hint: Option<Line<'static>>,
+) -> Rect {
+    let mut block = Block::default()
         .title(format!(" {} ", title))
         .borders(Borders::ALL)
         .padding(Padding::new(2, 2, 1, 1))
         .border_style(Style::default().fg(Color::DarkGray));
+    if let Some(hint) = bottom_hint {
+        block = block.title_bottom(hint);
+    }
     let inner = block.inner(area);
     frame.render_widget(block, area);
     inner
@@ -186,7 +201,7 @@ fn dim_status(text: &'static str) -> Vec<Line<'static>> {
 }
 
 fn draw_meter_strips(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Meters");
+    let inner = panel(frame, area, "Meters", None);
 
     let armed: Vec<&Channel> = app.session.armed().collect();
     if armed.is_empty() {
@@ -259,47 +274,28 @@ fn channel_strip(
 }
 
 fn footer_line(app: &App) -> Line<'static> {
-    let mut spans = Vec::new();
-    let naming_take = matches!(app.state, AppState::Recording { .. }) && app.timeline.is_naming_take();
-    if naming_take {
-        spans.push(Span::styled(
-            "Naming take  ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+    if matches!(app.state, AppState::Recording { .. }) && app.timeline.is_naming_take() {
+        return Line::from(Span::styled(
+            "Naming take",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         ));
-        spans.extend(key_hint("Enter", "save  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
-        return Line::from(spans);
     }
+    let mut spans = Vec::new();
     match &app.state {
         AppState::Idle => {
             spans.extend(key_hint("R", "record  ", Color::Cyan));
             spans.extend(key_hint("C", "channels  ", Color::Cyan));
-            spans.extend(key_hint("W", "waveform window  ", Color::Cyan));
             spans.extend(key_hint("Q", "quit", Color::DarkGray));
         }
         AppState::Recording {
             confirming_stop: false,
             ..
         } => {
+            let last_unbound = app.timeline.last_marker_unbound();
             spans.extend(key_hint("T", "take  ", Color::Cyan));
             spans.extend(key_hint("Space", "mark  ", Color::Cyan));
-            let last_unbound = app.timeline.last_marker_unbound();
-            if last_unbound {
-                spans.extend(key_hint("Backspace", "unmark  ", Color::Cyan));
-                spans.extend(key_hint("N", "name take  ", Color::Cyan));
-            } else {
-                spans.push(Span::styled(
-                    "[Backspace] unmark  ",
-                    Style::default().fg(Color::DarkGray),
-                ));
-                spans.push(Span::styled(
-                    "[N] name take  ",
-                    Style::default().fg(Color::DarkGray),
-                ));
-            }
-            spans.extend(key_hint("W", "window  ", Color::Cyan));
+            spans.extend(key_hint_when(last_unbound, "Backspace", "unmark  ", Color::Cyan));
+            spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
             spans.extend(key_hint("Esc", "stop", Color::DarkGray));
         }
         AppState::Recording {

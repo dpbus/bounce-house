@@ -17,8 +17,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         s if s < 3600 => format!("{} min", s / 60),
         s => format!("{} hr", s / 3600),
     };
+    let hint = Line::from(vec![
+        Span::styled("[W]", Style::default().fg(Color::Cyan)),
+        Span::raw(" cycle "),
+    ])
+    .right_aligned();
     let block = Block::default()
         .title(format!(" Waveform — {} window ", label))
+        .title(hint)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::DarkGray));
     let inner = block.inner(area);

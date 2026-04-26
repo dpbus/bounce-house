@@ -223,6 +223,24 @@ pub fn key_hint(key: &str, action: &str, key_color: Color) -> Vec<Span<'static>>
     ]
 }
 
+/// Same as `key_hint` but dims the whole thing when the action isn't
+/// currently available — preserves layout while signaling disabled state.
+pub fn key_hint_when(
+    enabled: bool,
+    key: &str,
+    action: &str,
+    key_color: Color,
+) -> Vec<Span<'static>> {
+    if enabled {
+        key_hint(key, action, key_color)
+    } else {
+        vec![Span::styled(
+            format!("[{}] {}", key, action),
+            Style::default().fg(Color::DarkGray),
+        )]
+    }
+}
+
 /// Converts a linear amplitude (0..1) to a dB-scaled fraction (0..1) suitable
 /// for visualizing on a meter or waveform that should match perceptual loudness.
 pub fn linear_to_db_fraction(level: f32) -> f32 {
