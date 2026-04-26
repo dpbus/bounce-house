@@ -8,7 +8,7 @@ use crate::audio::Device;
 use crate::audio::levels::ChannelLevel;
 use crate::units::SampleRate;
 
-pub const RECORDING_BUFFER_SECONDS: usize = 2;
+pub const RECORDING_BUFFER_SECONDS: usize = 10;
 
 pub struct Engine {
     _stream: cpal::Stream,
