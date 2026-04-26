@@ -5,4 +5,4 @@ mod levels;
 
 pub use device::Device;
 pub use disk_writer::{ArmedChannel, DiskWriter, DiskWriterConfig};
-pub use engine::Engine;
+pub use engine::{Engine, RECORDING_BUFFER_SECONDS};

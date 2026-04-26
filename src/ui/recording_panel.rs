@@ -2,7 +2,8 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use crate::app::{App, AppState, TICK_FPS};
-use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, take_color};
+use crate::timeline::BounceStatus;
+use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, spinner_glyph, take_color};
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let bottom_hint = matches!(app.state, AppState::NamingTake { .. }).then(|| {
@@ -110,15 +111,29 @@ fn take_entries(app: &App) -> Vec<Line<'static>> {
     for take in takes.iter().rev() {
         let color = take_color(take.color_index as usize);
         let secs = take.end_tick.saturating_sub(take.start_tick) / TICK_FPS as u64;
-        entries.push(Line::from(vec![
+        let mut spans = vec![
             Span::styled("▌ ", Style::default().fg(color)),
             Span::raw(take.name.clone()),
             Span::styled(
                 format!(" ({}:{:02})", secs / 60, secs % 60),
                 Style::default().fg(Color::DarkGray),
             ),
-        ]));
+        ];
+        spans.push(Span::raw(" "));
+        spans.push(bounce_status_span(&take.bounce_status, app.total_ticks));
+        entries.push(Line::from(spans));
     }
 
     entries
+}
+
+fn bounce_status_span(status: &BounceStatus, total_ticks: u64) -> Span<'static> {
+    match status {
+        BounceStatus::Pending => Span::styled("◌", Style::default().fg(Color::DarkGray)),
+        BounceStatus::Bouncing => {
+            Span::styled(spinner_glyph(total_ticks), Style::default().fg(Color::White))
+        }
+        BounceStatus::Done(_) => Span::styled("✓", Style::default().fg(Color::Green)),
+        BounceStatus::Failed(_) => Span::styled("✗", Style::default().fg(Color::Red)),
+    }
 }

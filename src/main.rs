@@ -1,5 +1,6 @@
 mod app;
 mod audio;
+mod bounce;
 mod channel;
 mod recording;
 mod session;

@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::BufWriter;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -10,15 +10,6 @@ use hound::{SampleFormat, WavSpec, WavWriter};
 
 use crate::units::{ChannelIndex, SampleRate};
 
-/// Conservative data-byte threshold per file. RIFF size (u32) hard-caps at
-/// 4 GiB − 1 with another ~44 bytes of headers; rotating at 4 GB decimal
-/// gives plenty of margin and keeps filenames predictable. At 48 kHz mono
-/// 32-bit float that's just under 5h 47m per part — long enough that most
-/// sessions never split, short enough we never approach the actual cap.
-const MAX_BYTES_PER_FILE: u64 = 4_000_000_000;
-const SAMPLE_BYTES: u64 = 4;
-const MAX_SAMPLES_PER_FILE: u64 = MAX_BYTES_PER_FILE / SAMPLE_BYTES;
-
 /// One armed channel — its position in the device's interleaved frame and
 /// its user-supplied label, used for the per-channel filename.
 pub struct ArmedChannel {
@@ -27,8 +18,9 @@ pub struct ArmedChannel {
 }
 
 pub struct DiskWriterConfig {
-    /// Folder that will hold one WAV per armed channel (plus continuation
-    /// files for any channel that crosses 4 GB).
+    /// Folder that will hold one WAV per armed channel. RIFF's u32 size
+    /// field caps each file at ~4 GB → ~5h 47m at 48 kHz mono float32.
+    /// Past that point the writer will fail; not currently guarded.
     pub output_dir: PathBuf,
     pub sample_rate: SampleRate,
     /// Total channels in each frame from the audio thread (= device channel
@@ -38,7 +30,7 @@ pub struct DiskWriterConfig {
 }
 
 pub struct DiskWriter {
-    output_dir: PathBuf,
+    channel_files: Vec<PathBuf>,
     stop_signal: Arc<AtomicBool>,
     writer_thread: Option<JoinHandle<()>>,
 }
@@ -48,8 +40,13 @@ impl DiskWriter {
         std::fs::create_dir_all(&config.output_dir)
             .expect("Failed to create recording directory");
 
+        let channel_files: Vec<PathBuf> = config
+            .armed
+            .iter()
+            .map(|ch| config.output_dir.join(channel_filename(ch)))
+            .collect();
+
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let output_dir = config.output_dir.clone();
 
         let writer_thread = {
             let stop_signal = stop_signal.clone();
@@ -57,14 +54,14 @@ impl DiskWriter {
         };
 
         DiskWriter {
-            output_dir,
+            channel_files,
             stop_signal,
             writer_thread: Some(writer_thread),
         }
     }
 
-    pub fn output_dir(&self) -> &Path {
-        &self.output_dir
+    pub fn channel_files(&self) -> &[PathBuf] {
+        &self.channel_files
     }
 }
 
@@ -90,9 +87,7 @@ fn write_to_disk(
         sample_format: SampleFormat::Float,
     };
 
-    let mut part: u32 = 1;
-    let mut writers = open_writers(&config, spec, part);
-    let mut samples_in_part: u64 = 0;
+    let mut writers = open_writers(&config, spec);
     let mut frame = vec![0.0f32; total];
     let mut filled = 0;
 
@@ -101,20 +96,11 @@ fn write_to_disk(
             frame[filled] = sample;
             filled += 1;
             if filled == frame.len() {
-                if samples_in_part >= MAX_SAMPLES_PER_FILE {
-                    // All channels split at the same frame boundary so parts
-                    // stay sample-aligned across files.
-                    finalize_writers(writers);
-                    part += 1;
-                    writers = open_writers(&config, spec, part);
-                    samples_in_part = 0;
-                }
                 for (writer, ch) in writers.iter_mut().zip(config.armed.iter()) {
                     writer
                         .write_sample(frame[ch.index.as_usize()])
                         .expect("Failed to write sample");
                 }
-                samples_in_part += 1;
                 filled = 0;
             }
         }
@@ -130,13 +116,12 @@ fn write_to_disk(
 fn open_writers(
     config: &DiskWriterConfig,
     spec: WavSpec,
-    part: u32,
 ) -> Vec<WavWriter<BufWriter<File>>> {
     config
         .armed
         .iter()
         .map(|ch| {
-            let path = config.output_dir.join(channel_filename(ch, part));
+            let path = config.output_dir.join(channel_filename(ch));
             WavWriter::create(&path, spec).expect("Failed to create WAV file")
         })
         .collect()
@@ -148,15 +133,7 @@ fn finalize_writers(writers: Vec<WavWriter<BufWriter<File>>>) {
     }
 }
 
-/// `chNN[-label][-ptN].wav`. Part suffix is omitted on part 1 so short
-/// recordings get clean filenames (`ch00-kick.wav`); rotation produces
-/// `ch00-kick-pt2.wav`, `ch00-kick-pt3.wav`, …
-fn channel_filename(ch: &ArmedChannel, part: u32) -> String {
-    let suffix = if part == 1 {
-        String::new()
-    } else {
-        format!("-pt{}", part)
-    };
+fn channel_filename(ch: &ArmedChannel) -> String {
     match &ch.label {
         Some(label) if !label.trim().is_empty() => {
             let safe: String = label
@@ -170,8 +147,8 @@ fn channel_filename(ch: &ArmedChannel, part: u32) -> String {
                     }
                 })
                 .collect();
-            format!("ch{:02}-{}{}.wav", ch.index.0, safe, suffix)
+            format!("ch{:02}-{}.wav", ch.index.0, safe)
         }
-        _ => format!("ch{:02}{}.wav", ch.index.0, suffix),
+        _ => format!("ch{:02}.wav", ch.index.0),
     }
 }

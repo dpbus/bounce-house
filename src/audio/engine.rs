@@ -6,9 +6,9 @@ use cpal::traits::StreamTrait;
 
 use crate::audio::Device;
 use crate::audio::levels::ChannelLevel;
-use crate::units::{SamplePosition, SampleRate};
+use crate::units::SampleRate;
 
-const RECORDING_BUFFER_SECONDS: usize = 2;
+pub const RECORDING_BUFFER_SECONDS: usize = 2;
 
 pub struct Engine {
     _stream: cpal::Stream,
@@ -121,8 +121,8 @@ impl Engine {
         &self.levels
     }
 
-    pub fn sample_position(&self) -> SamplePosition {
-        SamplePosition(self.sample_position.load(Ordering::Relaxed))
+    pub fn sample_position(&self) -> u64 {
+        self.sample_position.load(Ordering::Relaxed)
     }
 
     pub fn start_recording(&self) -> rtrb::Consumer<f32> {

@@ -32,6 +32,13 @@ pub fn take_color(idx: usize) -> Color {
     TAKE_COLORS[idx % TAKE_COLORS.len()]
 }
 
+/// Braille spinner frame for the given tick. Cycles at ~10fps when fed
+/// a 60fps tick counter.
+pub fn spinner_glyph(tick: u64) -> &'static str {
+    const FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    FRAMES[(tick / 6) as usize % FRAMES.len()]
+}
+
 const SILENCE_LEVEL: f32 = 0.0001;
 const SILENCE_DB: f32 = -80.0;
 

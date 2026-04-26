@@ -3,11 +3,12 @@ use std::path::PathBuf;
 
 use chrono::Local;
 
-use crate::audio::{ArmedChannel, Device, DiskWriter, DiskWriterConfig, Engine};
+use crate::audio::{ArmedChannel, Device, Engine};
+use crate::bounce::{BounceJob, BouncePool};
 use crate::recording::Recording;
 use crate::session::Session;
 use crate::timeline::Timeline;
-use crate::units::{ChannelIndex, SamplePosition};
+use crate::units::ChannelIndex;
 
 const FAST_DECAY: f32 = 0.976;
 const SLOW_DECAY: f32 = 0.990;
@@ -25,8 +26,8 @@ pub struct App {
     pub session: Session,
     pub engine: Engine,
     pub recording: Option<Recording>,
-    pub writer: Option<DiskWriter>,
     pub state: AppState,
+    pub bounce_pool: BouncePool,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
     pub level_history: VecDeque<(f32, bool)>,
@@ -64,8 +65,8 @@ impl App {
             session,
             engine,
             recording: None,
-            writer: None,
             state: AppState::Default,
+            bounce_pool: BouncePool::start(),
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
             level_history: VecDeque::with_capacity(MAX_HISTORY_ENTRIES + 1),
@@ -75,7 +76,7 @@ impl App {
     }
 
     pub fn is_recording(&self) -> bool {
-        self.writer.is_some()
+        self.recording.as_ref().is_some_and(|r| r.is_writing())
     }
 
     pub fn current_timeline(&self) -> Option<&Timeline> {
@@ -88,6 +89,13 @@ impl App {
 
     pub fn tick_display(&mut self) {
         self.total_ticks += 1;
+
+        for update in self.bounce_pool.drain_updates() {
+            if let Some(r) = &mut self.recording {
+                r.timeline.set_bounce_status(update.take_id, update.status);
+            }
+        }
+
         let recording = self.is_recording();
         let mut combined_peak = 0.0f32;
         for (i, level) in self.engine.levels().iter().enumerate() {
@@ -128,25 +136,20 @@ impl App {
             return Err(AppError::NothingArmed);
         }
 
-        let started_at = Local::now();
-        let timestamp = started_at.format("%Y-%m-%d-%H%M%S").to_string();
+        let timestamp = Local::now().format("%Y-%m-%d-%H%M%S").to_string();
         let output_dir = self.session.raw_dir.join(&timestamp);
 
         let consumer = self.engine.start_recording();
-        let writer = DiskWriter::start(
+        let recording = Recording::start(
+            output_dir,
             consumer,
-            DiskWriterConfig {
-                output_dir: output_dir.clone(),
-                sample_rate: self.engine.sample_rate(),
-                total_channel_count: self.engine.channel_count(),
-                armed,
-            },
+            self.engine.sample_rate(),
+            self.engine.channel_count(),
+            armed,
+            self.sample_position(),
+            self.total_ticks,
         );
-
-        let mut recording = Recording::new(started_at, output_dir);
-        recording.timeline.mark(self.total_ticks);
         self.recording = Some(recording);
-        self.writer = Some(writer);
         Ok(())
     }
 
@@ -157,13 +160,11 @@ impl App {
         // Detach producer from audio thread first; this is synchronous so by
         // the time it returns, no more samples will land in the rtrb.
         self.engine.stop_recording();
-        let now = Local::now();
+        let sample = self.sample_position();
+        let tick = self.total_ticks;
         if let Some(r) = &mut self.recording {
-            r.timeline.mark(self.total_ticks);
-            r.stopped_at = Some(now);
+            r.stop(tick, sample);
         }
-        // Dropping the writer joins its thread (drains rtrb, finalizes WAV).
-        self.writer = None;
         self.state = AppState::Default;
     }
 
@@ -172,8 +173,9 @@ impl App {
             return;
         }
         let tick = self.total_ticks;
-        if let Some(t) = self.current_timeline_mut() {
-            t.mark(tick);
+        let sample = self.sample_position();
+        if let Some(r) = &mut self.recording {
+            r.mark(tick, sample);
         }
     }
 
@@ -182,8 +184,9 @@ impl App {
             return;
         }
         let tick = self.total_ticks;
-        if let Some(t) = self.current_timeline_mut() {
-            t.mark(tick);
+        let sample = self.sample_position();
+        if let Some(r) = &mut self.recording {
+            r.mark(tick, sample);
         }
         self.state = AppState::NamingTake {
             buf: String::new(),
@@ -242,9 +245,25 @@ impl App {
             self.cancel_take_naming();
             return;
         }
-        if let Some(t) = self.current_timeline_mut() {
-            t.create_take(trimmed);
+
+        let sample_rate = self.engine.sample_rate();
+        let mut new_job: Option<BounceJob> = None;
+        if let Some(r) = &mut self.recording {
+            if r.timeline.create_take(trimmed) {
+                if let Some(take) = r.timeline.takes().last() {
+                    new_job = Some(BounceJob {
+                        take: take.clone(),
+                        sample_rate,
+                        output_dir: r.output_dir.clone(),
+                        channel_files: r.channel_files.clone(),
+                    });
+                }
+            }
         }
+        if let Some(job) = new_job {
+            self.bounce_pool.dispatch(job);
+        }
+
         self.state = AppState::Default;
     }
 
@@ -287,7 +306,7 @@ impl App {
         }
     }
 
-    pub fn sample_position(&self) -> SamplePosition {
+    pub fn sample_position(&self) -> u64 {
         self.engine.sample_position()
     }
 
