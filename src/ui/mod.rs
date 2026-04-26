@@ -1,6 +1,7 @@
 mod channel_picker;
 mod device_picker;
 mod main_view;
+mod waveform;
 mod widgets;
 
 use std::io::{self, stdout};
@@ -83,6 +84,7 @@ enum KeyAction {
     OpenPicker,
     ClosePicker,
     CycleWaveformWindow,
+    MarkTake,
     PickerCursorUp,
     PickerCursorDown,
     PickerToggleArmed,
@@ -106,6 +108,7 @@ fn decide(state: &AppState, key: KeyEvent) -> KeyAction {
         AppState::Recording { confirming_stop: false, .. } => match key.code {
             Esc => KeyAction::BeginConfirmStop,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
+            Char(' ') => KeyAction::MarkTake,
             _ => KeyAction::None,
         },
         AppState::Recording { confirming_stop: true, .. } => match key.code {
@@ -157,6 +160,7 @@ fn apply(app: &mut App, action: KeyAction) {
             app.state = AppState::Idle;
         }
         KeyAction::CycleWaveformWindow => app.cycle_waveform_window(),
+        KeyAction::MarkTake => app.mark_take(),
         KeyAction::PickerCursorUp => {
             if let AppState::PickingChannel { cursor, .. } = &mut app.state {
                 if *cursor > 0 {

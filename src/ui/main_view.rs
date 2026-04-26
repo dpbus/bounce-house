@@ -1,20 +1,14 @@
-use std::collections::VecDeque;
-
 use chrono::Local;
 use ratatui::prelude::*;
-use ratatui::symbols::Marker;
-use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
-use crate::app::{App, AppState, TICK_FPS};
+use crate::app::{App, AppState};
 use crate::channel::Channel;
-use crate::ui::widgets::{
-    BAND_GREEN, BAND_GREEN_DIM, BAND_RED, BAND_RED_DIM, BAND_YELLOW, BAND_YELLOW_DIM,
-    band_thresholds, key_hint, linear_to_db_fraction, vertical_meter,
-};
+use crate::ui::waveform;
+use crate::ui::widgets::{key_hint, vertical_meter};
 
 const TOP_BAR_HEIGHT: u16 = 12;
-const WAVEFORM_HEIGHT: u16 = 16;
+const WAVEFORM_HEIGHT: u16 = 18;
 const GAP: u16 = 1; // standard breathing room between sections
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -43,7 +37,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     draw_session_panel(frame, top_chunks[0], app);
     draw_recording_panel(frame, top_chunks[1], app);
-    draw_waveform(frame, chunks[2], app);
+    waveform::draw(frame, chunks[2], app);
     draw_meter_strips(frame, chunks[4], app);
     frame.render_widget(Paragraph::new(footer_line(app)), chunks[6]);
 }
@@ -64,13 +58,7 @@ fn outer_block(app: &App) -> Block<'static> {
 }
 
 fn draw_session_panel(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Session ")
-        .borders(Borders::ALL)
-        .padding(Padding::new(2, 2, 1, 1))
-        .border_style(Style::default().fg(Color::DarkGray));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = panel(frame, area, "Session");
 
     let duration = Local::now() - app.session.started_at;
     let secs = duration.num_seconds().max(0);
@@ -102,21 +90,11 @@ fn draw_session_panel(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Recording ")
-        .borders(Borders::ALL)
-        .padding(Padding::new(2, 2, 1, 1))
-        .border_style(Style::default().fg(Color::DarkGray));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = panel(frame, area, "Recording");
 
     let lines = match &app.state {
-        AppState::Idle => vec![
-            Line::from(Span::styled(
-                "Idle",
-                Style::default().fg(Color::DarkGray),
-            )),
-        ],
+        AppState::Idle => dim_status("Idle"),
+        AppState::PickingChannel { .. } => dim_status("Channel picker open"),
         AppState::Recording {
             started_at,
             recording,
@@ -139,119 +117,19 @@ fn draw_recording_panel(frame: &mut Frame, area: Rect, app: &App) {
                 labeled("Folder: ", dirname),
             ]
         }
-        AppState::PickingChannel { .. } => vec![
-            Line::from(Span::styled(
-                "Channel picker open",
-                Style::default().fg(Color::DarkGray),
-            )),
-        ],
     };
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn draw_waveform(frame: &mut Frame, area: Rect, app: &App) {
-    let label = match app.waveform_window_secs {
-        s if s < 60 => format!("{}s", s),
-        s if s < 3600 => format!("{} min", s / 60),
-        s => format!("{} hr", s / 3600),
-    };
+fn panel(frame: &mut Frame, area: Rect, title: &'static str) -> Rect {
     let block = Block::default()
-        .title(format!(" Waveform — {} window ", label))
+        .title(format!(" {} ", title))
         .borders(Borders::ALL)
+        .padding(Padding::new(2, 2, 1, 1))
         .border_style(Style::default().fg(Color::DarkGray));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-
-    let width = inner.width as usize;
-    let height = inner.height as usize;
-    if width == 0 || height < 2 {
-        return;
-    }
-
-    // Braille markers pack 2x4 dots per cell — run at 2x horizontal resolution.
-    let pixel_width = width * 2;
-    let amps = waveform_amps(&app.level_history, app.waveform_window_secs, pixel_width);
-    let (warn, clip) = band_thresholds();
-    let (warn, clip) = (warn as f64, clip as f64);
-    // 1 braille pixel of vertical extent — keeps the centerline visible
-    // through silent recorded moments.
-    let min_y = 1.0 / (height as f64 * 4.0);
-
-    let canvas = Canvas::default()
-        .marker(Marker::Braille)
-        .x_bounds([0.0, pixel_width as f64])
-        .y_bounds([-1.0, 1.0])
-        .paint(move |ctx| {
-            for (col, opt) in amps.iter().enumerate() {
-                let Some((amp, recorded)) = opt else { continue };
-                let half = (linear_to_db_fraction(*amp) as f64).max(min_y);
-                let x = col as f64;
-                let (green, yellow, red) = if *recorded {
-                    (BAND_GREEN, BAND_YELLOW, BAND_RED)
-                } else {
-                    (BAND_GREEN_DIM, BAND_YELLOW_DIM, BAND_RED_DIM)
-                };
-
-                let g_top = half.min(warn);
-                ctx.draw(&CanvasLine {
-                    x1: x, y1: -g_top, x2: x, y2: g_top, color: green,
-                });
-                if half > warn {
-                    let y_top = half.min(clip);
-                    ctx.draw(&CanvasLine {
-                        x1: x, y1: warn, x2: x, y2: y_top, color: yellow,
-                    });
-                    ctx.draw(&CanvasLine {
-                        x1: x, y1: -y_top, x2: x, y2: -warn, color: yellow,
-                    });
-                }
-                if half > clip {
-                    ctx.draw(&CanvasLine {
-                        x1: x, y1: clip, x2: x, y2: half, color: red,
-                    });
-                    ctx.draw(&CanvasLine {
-                        x1: x, y1: -half, x2: x, y2: -clip, color: red,
-                    });
-                }
-            }
-        });
-    frame.render_widget(canvas, inner);
-}
-
-/// `(amp, was_recording)` per pixel column. Buckets are anchored to absolute
-/// history indices so each one is sealed once its time has passed. The
-/// `was_recording` flag is true if any sample in the bucket was captured to
-/// disk — used to render recorded portions at full brightness vs dim live
-/// audio. `None` columns are pre-recording or empty future buckets.
-fn waveform_amps(
-    history: &VecDeque<(f32, bool)>,
-    window_secs: u64,
-    pixel_width: usize,
-) -> Vec<Option<(f32, bool)>> {
-    let visible_ticks = window_secs as usize * TICK_FPS;
-    let bucket_size = (visible_ticks / pixel_width).max(1);
-    let history_len = history.len();
-    let latest_bucket = (history_len / bucket_size) as i64;
-    let leftmost = latest_bucket - (pixel_width as i64 - 1);
-
-    (0..pixel_width)
-        .map(|col| {
-            let bucket_idx = leftmost + col as i64;
-            if bucket_idx < 0 {
-                return None;
-            }
-            let start = bucket_idx as usize * bucket_size;
-            let end = (start + bucket_size).min(history_len);
-            if start >= end {
-                return None;
-            }
-            let (amp, recorded) = history.range(start..end).fold(
-                (0.0f32, false),
-                |(amx, rec), &(a, r)| (amx.max(a), rec || r),
-            );
-            Some((amp, recorded))
-        })
-        .collect()
+    inner
 }
 
 fn labeled(label: &'static str, value: String) -> Line<'static> {
@@ -261,14 +139,15 @@ fn labeled(label: &'static str, value: String) -> Line<'static> {
     ])
 }
 
+fn dim_status(text: &'static str) -> Vec<Line<'static>> {
+    vec![Line::from(Span::styled(
+        text,
+        Style::default().fg(Color::DarkGray),
+    ))]
+}
+
 fn draw_meter_strips(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Meters ")
-        .borders(Borders::ALL)
-        .padding(Padding::new(2, 2, 1, 1))
-        .border_style(Style::default().fg(Color::DarkGray));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = panel(frame, area, "Meters");
 
     let armed: Vec<&Channel> = app.session.armed().collect();
     if armed.is_empty() {
@@ -355,7 +234,7 @@ fn footer_line(app: &App) -> Line<'static> {
         } => {
             spans.extend(key_hint("Esc", "stop  ", Color::Cyan));
             spans.extend(key_hint("W", "waveform window  ", Color::Cyan));
-            spans.extend(key_hint("Space", "mark take (coming soon)", Color::DarkGray));
+            spans.extend(key_hint("Space", "mark take", Color::Cyan));
         }
         AppState::Recording {
             confirming_stop: true,
