@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Local};
 
-use crate::audio::{ArmedChannel, DiskWriter, DiskWriterConfig};
+use crate::audio::{ArmedChannel, DiskWriter};
 use crate::timeline::Timeline;
 use crate::units::SampleRate;
 
@@ -30,12 +30,10 @@ impl Recording {
     ) -> Self {
         let writer = DiskWriter::start(
             consumer,
-            DiskWriterConfig {
-                output_dir: output_dir.clone(),
-                sample_rate,
-                total_channel_count,
-                armed,
-            },
+            output_dir.clone(),
+            sample_rate,
+            total_channel_count,
+            armed,
         );
         let channel_files = writer.channel_files().to_vec();
 
