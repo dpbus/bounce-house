@@ -87,6 +87,7 @@ enum KeyAction {
     DropMarker,
     MarkAndName,
     NameLastUnbound,
+    DeleteLastMarker,
     CancelTakeNaming,
     CommitTakeNaming,
     TakeNameAppendChar(char),
@@ -126,6 +127,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             Char(' ') => KeyAction::DropMarker,
             Char('t') | Char('T') => KeyAction::MarkAndName,
             Char('n') | Char('N') => KeyAction::NameLastUnbound,
+            Backspace => KeyAction::DeleteLastMarker,
             _ => KeyAction::None,
         },
         AppState::Recording { confirming_stop: true, .. } => match key.code {
@@ -180,6 +182,7 @@ fn apply(app: &mut App, action: KeyAction) {
         KeyAction::DropMarker => app.drop_marker(),
         KeyAction::MarkAndName => app.mark_and_name(),
         KeyAction::NameLastUnbound => app.name_last_unbound(),
+        KeyAction::DeleteLastMarker => app.delete_last_marker(),
         KeyAction::CancelTakeNaming => app.timeline.cancel(),
         KeyAction::CommitTakeNaming => app.timeline.commit(),
         KeyAction::TakeNameAppendChar(c) => app.timeline.append_char(c),

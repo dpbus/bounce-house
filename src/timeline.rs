@@ -72,6 +72,25 @@ impl Timeline {
         }
     }
 
+    /// Whether `delete_last_marker` would succeed.
+    pub fn can_delete_last_marker(&self) -> bool {
+        if self.creating.is_some() || self.markers.len() <= 1 {
+            return false;
+        }
+        let last = self.markers.last().unwrap();
+        !self.takes.iter().any(|t| t.start_tick == last.tick || t.end_tick == last.tick)
+    }
+
+    /// Pop the last marker if it isn't part of any take. The recording-start
+    /// marker is protected.
+    pub fn delete_last_marker(&mut self) -> bool {
+        if !self.can_delete_last_marker() {
+            return false;
+        }
+        self.markers.pop();
+        true
+    }
+
     pub fn cancel(&mut self) {
         if let Some(CreatingTake::Fresh(_)) = self.creating.take() {
             self.markers.pop();

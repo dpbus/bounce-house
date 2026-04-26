@@ -154,6 +154,12 @@ impl App {
         }
     }
 
+    pub fn delete_last_marker(&mut self) {
+        if self.is_recording_active() {
+            self.timeline.delete_last_marker();
+        }
+    }
+
     fn is_recording_active(&self) -> bool {
         matches!(self.state, AppState::Recording { confirming_stop: false, .. })
     }
