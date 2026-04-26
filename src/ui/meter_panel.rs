@@ -12,7 +12,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     if armed.is_empty() {
         let msg = Paragraph::new(Line::from(vec![
             Span::styled("No channels armed.  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("[c]", Style::default().fg(Color::Cyan)),
+            Span::styled("[C]", Style::default().fg(Color::Cyan)),
             Span::raw(" open channel picker to arm channels"),
         ]))
         .alignment(Alignment::Center);
