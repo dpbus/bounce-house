@@ -1,6 +1,9 @@
 mod channel_picker;
 mod device_picker;
 mod main_view;
+mod meter_panel;
+mod recording_panel;
+mod session_panel;
 mod waveform;
 mod widgets;
 

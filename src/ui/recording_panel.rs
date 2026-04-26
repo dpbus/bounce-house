@@ -1,0 +1,119 @@
+use ratatui::prelude::*;
+use ratatui::widgets::Paragraph;
+
+use crate::app::{App, AppState, TICK_FPS};
+use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, take_color};
+
+pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
+    let bottom_hint = app.timeline.is_naming_take().then(|| {
+        let mut spans = vec![Span::raw(" ")];
+        spans.extend(key_hint("Enter", "save  ", Color::Cyan));
+        spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
+        spans.push(Span::raw(" "));
+        Line::from(spans)
+    });
+    let inner = panel(frame, area, "Recording", bottom_hint);
+
+    let (started_at, recording) = match &app.state {
+        AppState::Recording { started_at, recording, .. } => (started_at, recording),
+        AppState::Idle => {
+            frame.render_widget(Paragraph::new(dim_status("Idle")), inner);
+            return;
+        }
+        AppState::PickingChannel { .. } => {
+            frame.render_widget(Paragraph::new(dim_status("Channel picker open")), inner);
+            return;
+        }
+    };
+
+    let elapsed = started_at.elapsed().as_secs();
+    let timer = Line::from(Span::styled(
+        format!("● {:02}:{:02}", elapsed / 60, elapsed % 60),
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+    ));
+    let dirname = recording
+        .output_dir()
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let folder = Line::from(vec![
+        Span::styled("Folder: ", Style::default().fg(Color::DarkGray)),
+        Span::raw(dirname),
+    ])
+    .right_aligned();
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),  // timer + folder
+            Constraint::Length(1),  // blank
+            Constraint::Length(1),  // "Takes"
+            Constraint::Fill(1),    // entries area
+        ])
+        .split(inner);
+
+    let header_row = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(8), Constraint::Fill(1)])
+        .split(chunks[0]);
+    frame.render_widget(Paragraph::new(timer), header_row[0]);
+    frame.render_widget(Paragraph::new(folder), header_row[1]);
+
+    let entries = take_entries(app);
+    if entries.is_empty() {
+        return;
+    }
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "Takes",
+            Style::default().fg(Color::DarkGray),
+        ))),
+        chunks[2],
+    );
+
+    let n_cols = if chunks[3].width >= 50 {
+        3
+    } else if chunks[3].width >= 32 {
+        2
+    } else {
+        1
+    };
+    flow_columns(frame, chunks[3], &entries, n_cols);
+}
+
+/// Lines for the Takes section: naming buffer first, then named takes
+/// newest-first.
+fn take_entries(app: &App) -> Vec<Line<'static>> {
+    let take_name_buf = app.timeline.take_name_buf();
+    let takes = app.timeline.takes();
+    let mut entries = Vec::new();
+
+    if let Some(buf) = take_name_buf {
+        let next_color = takes.last().map(|t| t.color_index + 1).unwrap_or(0);
+        let color = take_color(next_color as usize);
+        entries.push(Line::from(vec![
+            Span::styled("▌ ", Style::default().fg(color)),
+            Span::raw(buf.to_string()),
+            Span::styled(
+                "_",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK),
+            ),
+        ]));
+    }
+
+    for take in takes.iter().rev() {
+        let color = take_color(take.color_index as usize);
+        let secs = take.end_tick.saturating_sub(take.start_tick) / TICK_FPS as u64;
+        entries.push(Line::from(vec![
+            Span::styled("▌ ", Style::default().fg(color)),
+            Span::raw(take.name.clone()),
+            Span::styled(
+                format!(" ({}:{:02})", secs / 60, secs % 60),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+    }
+
+    entries
+}

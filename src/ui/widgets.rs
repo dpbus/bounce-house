@@ -1,4 +1,5 @@
 use ratatui::prelude::*;
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 const MIN_DB: f32 = -45.0;
 const MAX_DB: f32 = 6.0;
@@ -238,6 +239,69 @@ pub fn key_hint_when(
             format!("[{}] {}", key, action),
             Style::default().fg(Color::DarkGray),
         )]
+    }
+}
+
+/// Bordered panel with a title at top-left, an optional hint on the
+/// bottom border (alignment baked in by the caller), and consistent
+/// inner padding. Renders the block and returns the inner drawing area.
+pub fn panel(
+    frame: &mut Frame,
+    area: Rect,
+    title: &'static str,
+    bottom_hint: Option<Line<'static>>,
+) -> Rect {
+    let mut block = Block::default()
+        .title(format!(" {} ", title))
+        .borders(Borders::ALL)
+        .padding(Padding::new(2, 2, 1, 1))
+        .border_style(Style::default().fg(Color::DarkGray));
+    if let Some(hint) = bottom_hint {
+        block = block.title_bottom(hint);
+    }
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    inner
+}
+
+/// `Label: Value` — label dimmed, value at default style.
+pub fn labeled(label: &'static str, value: String) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(label, Style::default().fg(Color::DarkGray)),
+        Span::raw(value),
+    ])
+}
+
+/// Single dim line used as a placeholder when a panel has nothing active.
+pub fn dim_status(text: &'static str) -> Vec<Line<'static>> {
+    vec![Line::from(Span::styled(
+        text,
+        Style::default().fg(Color::DarkGray),
+    ))]
+}
+
+/// Renders `lines` flowing across `n_cols` equal columns of `area`,
+/// newspaper-style — column 1 fills top-to-bottom first, then column 2,
+/// etc. Overflow past the last column is dropped off the bottom.
+pub fn flow_columns(frame: &mut Frame, area: Rect, lines: &[Line<'static>], n_cols: u32) {
+    if n_cols == 0 || area.width == 0 || area.height == 0 {
+        return;
+    }
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .spacing(1)
+        .constraints(vec![Constraint::Ratio(1, n_cols); n_cols as usize])
+        .split(area);
+    let per_col = area.height as usize;
+    for (i, col_area) in cols.iter().enumerate() {
+        let chunk: Vec<Line> = lines.iter()
+            .skip(i * per_col)
+            .take(per_col)
+            .cloned()
+            .collect();
+        if !chunk.is_empty() {
+            frame.render_widget(Paragraph::new(chunk), *col_area);
+        }
     }
 }
 
