@@ -5,7 +5,7 @@ use ratatui::symbols::Marker;
 use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 use ratatui::widgets::{Block, Borders};
 
-use crate::app::{App, TICK_FPS};
+use crate::app::App;
 use crate::ui::widgets::{
     BAND_GREEN, BAND_GREEN_DIM, BAND_RED, BAND_RED_DIM, BAND_YELLOW, BAND_YELLOW_DIM,
     band_thresholds, linear_to_db_fraction, take_color,
@@ -47,6 +47,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         app.level_history.len(),
         app.waveform_window_secs,
         cols,
+        app.measured_tick_rate(),
     );
     let amps = waveform_amps(&app.level_history, &layout);
     let marker_columns: Vec<(Color, usize)> = app
@@ -133,8 +134,8 @@ struct WaveformLayout {
 }
 
 impl WaveformLayout {
-    fn new(history_len: usize, window_secs: u64, cols: usize) -> Self {
-        let visible_ticks = window_secs as usize * TICK_FPS;
+    fn new(history_len: usize, window_secs: u64, cols: usize, tick_rate: f32) -> Self {
+        let visible_ticks = (window_secs as f32 * tick_rate) as usize;
         let bucket_size = (visible_ticks / cols).max(1);
         let latest_bucket = (history_len / bucket_size) as i64;
         let leftmost = latest_bucket - (cols as i64 - 1);

@@ -312,6 +312,17 @@ impl App {
         self.engine.sample_position()
     }
 
+    /// Cumulative average UI tick rate since engine start. Returns the
+    /// nominal `TICK_FPS` until the engine has produced at least one sample.
+    pub fn measured_tick_rate(&self) -> f32 {
+        let sample_pos = self.engine.sample_position();
+        if sample_pos == 0 {
+            return TICK_FPS as f32;
+        }
+        let elapsed_secs = sample_pos as f32 / self.engine.sample_rate().0 as f32;
+        self.total_ticks as f32 / elapsed_secs
+    }
+
     /// Whether marker-list mutations (Space, T, Backspace) are allowed:
     /// actively recording with no overlay open.
     fn can_mark(&self) -> bool {

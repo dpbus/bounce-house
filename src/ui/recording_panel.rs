@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, AppState, TICK_FPS};
+use crate::app::{App, AppState};
 use crate::timeline::BounceStatus;
 use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, spinner_glyph, take_color};
 
@@ -108,9 +108,10 @@ fn take_entries(app: &App) -> Vec<Line<'static>> {
         ]));
     }
 
+    let sample_rate = app.engine.sample_rate().0 as u64;
     for take in takes.iter().rev() {
         let color = take_color(take.color_index as usize);
-        let secs = take.end_tick.saturating_sub(take.start_tick) / TICK_FPS as u64;
+        let secs = take.end_sample.saturating_sub(take.start_sample) / sample_rate;
         let mut spans = vec![
             Span::styled("▌ ", Style::default().fg(color)),
             Span::raw(take.name.clone()),
