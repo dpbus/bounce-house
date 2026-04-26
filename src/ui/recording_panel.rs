@@ -1,3 +1,4 @@
+use chrono::Local;
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
@@ -5,7 +6,7 @@ use crate::app::{App, AppState, TICK_FPS};
 use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, take_color};
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let bottom_hint = app.timeline.is_naming_take().then(|| {
+    let bottom_hint = matches!(app.state, AppState::NamingTake { .. }).then(|| {
         let mut spans = vec![Span::raw(" ")];
         spans.extend(key_hint("Enter", "save  ", Color::Cyan));
         spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
@@ -14,25 +15,23 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     });
     let inner = panel(frame, area, "Recording", bottom_hint);
 
-    let (started_at, recording) = match &app.state {
-        AppState::Recording { started_at, recording, .. } => (started_at, recording),
-        AppState::Idle => {
-            frame.render_widget(Paragraph::new(dim_status("Idle")), inner);
-            return;
-        }
-        AppState::PickingChannel { .. } => {
-            frame.render_widget(Paragraph::new(dim_status("Channel picker open")), inner);
-            return;
-        }
-    };
+    if matches!(app.state, AppState::PickingChannel { .. }) {
+        frame.render_widget(Paragraph::new(dim_status("Channel picker open")), inner);
+        return;
+    }
+    if !app.is_recording() {
+        frame.render_widget(Paragraph::new(dim_status("Idle")), inner);
+        return;
+    }
+    let recording = app.recording.as_ref().expect("is_recording implies Some");
 
-    let elapsed = started_at.elapsed().as_secs();
+    let elapsed = (Local::now() - recording.started_at).num_seconds().max(0) as u64;
     let timer = Line::from(Span::styled(
         format!("● {:02}:{:02}", elapsed / 60, elapsed % 60),
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
     ));
     let dirname = recording
-        .output_dir()
+        .output_dir
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
@@ -82,14 +81,17 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     flow_columns(frame, chunks[3], &entries, n_cols);
 }
 
-/// Lines for the Takes section: naming buffer first, then named takes
-/// newest-first.
+/// Lines for the Takes section: in-progress naming buffer first, then
+/// named takes newest-first.
 fn take_entries(app: &App) -> Vec<Line<'static>> {
-    let take_name_buf = app.timeline.take_name_buf();
-    let takes = app.timeline.takes();
+    let naming_buf = match &app.state {
+        AppState::NamingTake { buf, .. } => Some(buf.as_str()),
+        _ => None,
+    };
+    let takes = app.current_timeline().map(|t| t.takes()).unwrap_or(&[]);
     let mut entries = Vec::new();
 
-    if let Some(buf) = take_name_buf {
+    if let Some(buf) = naming_buf {
         let next_color = takes.last().map(|t| t.color_index + 1).unwrap_or(0);
         let color = take_color(next_color as usize);
         entries.push(Line::from(vec![

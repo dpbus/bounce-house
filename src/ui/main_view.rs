@@ -41,12 +41,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn outer_block(app: &App) -> Block<'static> {
-    let (title, color) = match &app.state {
-        AppState::Recording { .. } => (
-            format!(" ● Recording — {} ", app.engine.name()),
-            Color::Red,
-        ),
-        _ => (format!(" {} ", app.engine.name()), Color::Cyan),
+    let (title, color) = if app.is_recording() {
+        (format!(" ● Recording — {} ", app.engine.name()), Color::Red)
+    } else {
+        (format!(" {} ", app.engine.name()), Color::Cyan)
     };
     Block::default()
         .title(title)
@@ -56,45 +54,37 @@ fn outer_block(app: &App) -> Block<'static> {
 }
 
 fn footer_line(app: &App) -> Line<'static> {
-    if matches!(app.state, AppState::Recording { .. }) && app.timeline.is_naming_take() {
-        return Line::from(Span::styled(
-            "Naming take",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-        ));
-    }
     let mut spans = Vec::new();
     match &app.state {
-        AppState::Idle => {
-            spans.extend(key_hint("R", "record  ", Color::Cyan));
-            spans.extend(key_hint("C", "channels  ", Color::Cyan));
-            spans.extend(key_hint("Q", "quit", Color::DarkGray));
+        AppState::NamingTake { .. } => {
+            return Line::from(Span::styled(
+                "Naming take",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ));
         }
-        AppState::Recording {
-            confirming_stop: false,
-            ..
-        } => {
-            let last_unbound = app.timeline.last_marker_unbound();
-            spans.extend(key_hint("T", "take  ", Color::Cyan));
-            spans.extend(key_hint("Space", "mark  ", Color::Cyan));
-            spans.extend(key_hint_when(last_unbound, "Backspace", "unmark  ", Color::Cyan));
-            spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
-            spans.extend(key_hint("Esc", "stop", Color::DarkGray));
-        }
-        AppState::Recording {
-            confirming_stop: true,
-            ..
-        } => {
+        AppState::ConfirmingStop => {
             spans.push(Span::styled(
                 "Stop recording?  ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
             ));
             spans.extend(key_hint("Esc", "yes  ", Color::Cyan));
             spans.extend(key_hint("any other key", "no", Color::DarkGray));
         }
         AppState::PickingChannel { .. } => {
             spans.extend(key_hint("Esc", "close picker", Color::Cyan));
+        }
+        AppState::Default if app.is_recording() => {
+            let last_unbound = app.current_timeline().is_some_and(|t| t.last_marker_unbound());
+            spans.extend(key_hint("T", "take  ", Color::Cyan));
+            spans.extend(key_hint("Space", "mark  ", Color::Cyan));
+            spans.extend(key_hint_when(last_unbound, "Backspace", "unmark  ", Color::Cyan));
+            spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
+            spans.extend(key_hint("Esc", "stop", Color::DarkGray));
+        }
+        AppState::Default => {
+            spans.extend(key_hint("R", "record  ", Color::Cyan));
+            spans.extend(key_hint("C", "channels  ", Color::Cyan));
+            spans.extend(key_hint("Q", "quit", Color::DarkGray));
         }
     }
     Line::from(spans)

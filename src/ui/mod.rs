@@ -107,33 +107,15 @@ enum KeyAction {
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
     use KeyCode::*;
-    if matches!(app.state, AppState::Recording { .. }) && app.timeline.is_naming_take() {
-        return match key.code {
+    match &app.state {
+        AppState::NamingTake { .. } => match key.code {
             Esc => KeyAction::CancelTakeNaming,
             Enter => KeyAction::CommitTakeNaming,
             Backspace => KeyAction::TakeNameBackspace,
             Char(c) => KeyAction::TakeNameAppendChar(c),
             _ => KeyAction::None,
-        };
-    }
-    match &app.state {
-        AppState::Idle => match key.code {
-            Char('q') | Char('Q') | Esc => KeyAction::Quit,
-            Char('r') | Char('R') => KeyAction::StartRecording,
-            Char('c') | Char('C') => KeyAction::OpenPicker,
-            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
-            _ => KeyAction::None,
         },
-        AppState::Recording { confirming_stop: false, .. } => match key.code {
-            Esc => KeyAction::BeginConfirmStop,
-            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
-            Char(' ') => KeyAction::DropMarker,
-            Char('t') | Char('T') => KeyAction::MarkAndName,
-            Char('n') | Char('N') => KeyAction::NameTake,
-            Backspace => KeyAction::DeleteLastMarker,
-            _ => KeyAction::None,
-        },
-        AppState::Recording { confirming_stop: true, .. } => match key.code {
+        AppState::ConfirmingStop => match key.code {
             Esc => KeyAction::StopRecording,
             _ => KeyAction::CancelConfirmStop,
         },
@@ -152,6 +134,22 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             Char(c) => KeyAction::PickerAppendChar(c),
             _ => KeyAction::None,
         },
+        AppState::Default if app.is_recording() => match key.code {
+            Esc => KeyAction::BeginConfirmStop,
+            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
+            Char(' ') => KeyAction::DropMarker,
+            Char('t') | Char('T') => KeyAction::MarkAndName,
+            Char('n') | Char('N') => KeyAction::NameTake,
+            Backspace => KeyAction::DeleteLastMarker,
+            _ => KeyAction::None,
+        },
+        AppState::Default => match key.code {
+            Char('q') | Char('Q') | Esc => KeyAction::Quit,
+            Char('r') | Char('R') => KeyAction::StartRecording,
+            Char('c') | Char('C') => KeyAction::OpenPicker,
+            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
+            _ => KeyAction::None,
+        },
     }
 }
 
@@ -161,35 +159,20 @@ fn apply(app: &mut App, action: KeyAction) {
         KeyAction::StartRecording => {
             let _ = app.start_recording();
         }
-        KeyAction::BeginConfirmStop => {
-            if let AppState::Recording { confirming_stop, .. } = &mut app.state {
-                *confirming_stop = true;
-            }
-        }
-        KeyAction::CancelConfirmStop => {
-            if let AppState::Recording { confirming_stop, .. } = &mut app.state {
-                *confirming_stop = false;
-            }
-        }
+        KeyAction::BeginConfirmStop => app.begin_confirm_stop(),
+        KeyAction::CancelConfirmStop => app.cancel_confirm_stop(),
         KeyAction::StopRecording => app.stop_recording(),
-        KeyAction::OpenPicker => {
-            app.state = AppState::PickingChannel {
-                cursor: 0,
-                renaming: None,
-            };
-        }
-        KeyAction::ClosePicker => {
-            app.state = AppState::Idle;
-        }
+        KeyAction::OpenPicker => app.open_picker(),
+        KeyAction::ClosePicker => app.close_picker(),
         KeyAction::CycleWaveformWindow => app.cycle_waveform_window(),
         KeyAction::DropMarker => app.drop_marker(),
         KeyAction::MarkAndName => app.mark_and_name(),
         KeyAction::NameTake => app.name_take(),
         KeyAction::DeleteLastMarker => app.delete_last_marker(),
-        KeyAction::CancelTakeNaming => app.timeline.cancel(),
-        KeyAction::CommitTakeNaming => app.timeline.commit(),
-        KeyAction::TakeNameAppendChar(c) => app.timeline.append_char(c),
-        KeyAction::TakeNameBackspace => app.timeline.backspace(),
+        KeyAction::CancelTakeNaming => app.cancel_take_naming(),
+        KeyAction::CommitTakeNaming => app.commit_take_naming(),
+        KeyAction::TakeNameAppendChar(c) => app.take_name_append_char(c),
+        KeyAction::TakeNameBackspace => app.take_name_backspace(),
         KeyAction::PickerCursorUp => {
             if let AppState::PickingChannel { cursor, .. } = &mut app.state {
                 if *cursor > 0 {

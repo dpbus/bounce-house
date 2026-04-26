@@ -50,14 +50,15 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     );
     let amps = waveform_amps(&app.level_history, &layout);
     let marker_columns: Vec<(Color, usize)> = app
-        .timeline
-        .markers()
+        .current_timeline()
+        .map(|t| t.markers())
+        .unwrap_or(&[])
         .iter()
         .filter_map(|m| {
             let col = layout.tick_to_column(m.tick, app.total_ticks)?;
             let color = app
-                .timeline
-                .marker_color_index(m.tick)
+                .current_timeline()
+                .and_then(|t| t.marker_color_index(m.tick))
                 .map(|i| take_color(i as usize))
                 .unwrap_or(Color::DarkGray);
             Some((color, col))
