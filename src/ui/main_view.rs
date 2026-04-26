@@ -9,8 +9,8 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use crate::app::{App, AppState, TICK_FPS};
 use crate::channel::Channel;
 use crate::ui::widgets::{
-    BAND_GREEN, BAND_RED, BAND_YELLOW, band_thresholds, key_hint, linear_to_db_fraction,
-    vertical_meter,
+    BAND_GREEN, BAND_GREEN_DIM, BAND_RED, BAND_RED_DIM, BAND_YELLOW, BAND_YELLOW_DIM,
+    band_thresholds, key_hint, linear_to_db_fraction, vertical_meter,
 };
 
 const TOP_BAR_HEIGHT: u16 = 12;
@@ -162,14 +162,6 @@ fn draw_waveform(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if app.recording_history.is_empty() {
-        let msg = Paragraph::new("(no recording yet)")
-            .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center);
-        frame.render_widget(msg, inner);
-        return;
-    }
-
     let width = inner.width as usize;
     let height = inner.height as usize;
     if width == 0 || height < 2 {
@@ -178,7 +170,7 @@ fn draw_waveform(frame: &mut Frame, area: Rect, app: &App) {
 
     // Braille markers pack 2x4 dots per cell — run at 2x horizontal resolution.
     let pixel_width = width * 2;
-    let amps = waveform_amps(&app.recording_history, app.waveform_window_secs, pixel_width);
+    let amps = waveform_amps(&app.level_history, app.waveform_window_secs, pixel_width);
     let (warn, clip) = band_thresholds();
     let (warn, clip) = (warn as f64, clip as f64);
     // 1 braille pixel of vertical extent — keeps the centerline visible
@@ -191,29 +183,34 @@ fn draw_waveform(frame: &mut Frame, area: Rect, app: &App) {
         .y_bounds([-1.0, 1.0])
         .paint(move |ctx| {
             for (col, opt) in amps.iter().enumerate() {
-                let Some(amp) = opt else { continue };
+                let Some((amp, recorded)) = opt else { continue };
                 let half = (linear_to_db_fraction(*amp) as f64).max(min_y);
                 let x = col as f64;
+                let (green, yellow, red) = if *recorded {
+                    (BAND_GREEN, BAND_YELLOW, BAND_RED)
+                } else {
+                    (BAND_GREEN_DIM, BAND_YELLOW_DIM, BAND_RED_DIM)
+                };
 
                 let g_top = half.min(warn);
                 ctx.draw(&CanvasLine {
-                    x1: x, y1: -g_top, x2: x, y2: g_top, color: BAND_GREEN,
+                    x1: x, y1: -g_top, x2: x, y2: g_top, color: green,
                 });
                 if half > warn {
                     let y_top = half.min(clip);
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: warn, x2: x, y2: y_top, color: BAND_YELLOW,
+                        x1: x, y1: warn, x2: x, y2: y_top, color: yellow,
                     });
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: -y_top, x2: x, y2: -warn, color: BAND_YELLOW,
+                        x1: x, y1: -y_top, x2: x, y2: -warn, color: yellow,
                     });
                 }
                 if half > clip {
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: clip, x2: x, y2: half, color: BAND_RED,
+                        x1: x, y1: clip, x2: x, y2: half, color: red,
                     });
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: -half, x2: x, y2: -clip, color: BAND_RED,
+                        x1: x, y1: -half, x2: x, y2: -clip, color: red,
                     });
                 }
             }
@@ -221,15 +218,16 @@ fn draw_waveform(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(canvas, inner);
 }
 
-/// One amplitude value per pixel column, anchored to absolute recording-history
-/// indices so each bucket is sealed once its time has passed (no sliding-window
-/// decay artifact). The rightmost column is the in-progress bucket and updates
-/// every tick. `None` columns are pre-recording or empty future buckets.
+/// `(amp, was_recording)` per pixel column. Buckets are anchored to absolute
+/// history indices so each one is sealed once its time has passed. The
+/// `was_recording` flag is true if any sample in the bucket was captured to
+/// disk — used to render recorded portions at full brightness vs dim live
+/// audio. `None` columns are pre-recording or empty future buckets.
 fn waveform_amps(
-    history: &VecDeque<f32>,
+    history: &VecDeque<(f32, bool)>,
     window_secs: u64,
     pixel_width: usize,
-) -> Vec<Option<f32>> {
+) -> Vec<Option<(f32, bool)>> {
     let visible_ticks = window_secs as usize * TICK_FPS;
     let bucket_size = (visible_ticks / pixel_width).max(1);
     let history_len = history.len();
@@ -247,7 +245,11 @@ fn waveform_amps(
             if start >= end {
                 return None;
             }
-            Some(history.range(start..end).copied().fold(0.0f32, f32::max))
+            let (amp, recorded) = history.range(start..end).fold(
+                (0.0f32, false),
+                |(amx, rec), &(a, r)| (amx.max(a), rec || r),
+            );
+            Some((amp, recorded))
         })
         .collect()
 }

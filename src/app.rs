@@ -27,7 +27,7 @@ pub struct App {
     pub state: AppState,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
-    pub recording_history: VecDeque<f32>,
+    pub level_history: VecDeque<(f32, bool)>,
     pub waveform_window_secs: u64,
 }
 
@@ -61,7 +61,7 @@ impl App {
             state: AppState::Idle,
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
-            recording_history: VecDeque::with_capacity(MAX_HISTORY_ENTRIES + 1),
+            level_history: VecDeque::with_capacity(MAX_HISTORY_ENTRIES + 1),
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
         }
     }
@@ -73,15 +73,13 @@ impl App {
             let peak = level.take_current();
             self.display_levels[i] = peak.max(self.display_levels[i] * FAST_DECAY);
             self.peak_holds[i] = peak.max(self.peak_holds[i] * SLOW_DECAY);
-            if recording && self.session.channels[i].armed {
+            if self.session.channels[i].armed {
                 combined_peak = combined_peak.max(peak);
             }
         }
-        if recording {
-            self.recording_history.push_back(combined_peak);
-            while self.recording_history.len() > MAX_HISTORY_ENTRIES {
-                self.recording_history.pop_front();
-            }
+        self.level_history.push_back((combined_peak, recording));
+        while self.level_history.len() > MAX_HISTORY_ENTRIES {
+            self.level_history.pop_front();
         }
     }
 
@@ -123,7 +121,6 @@ impl App {
             },
         );
 
-        self.recording_history.clear();
         self.state = AppState::Recording {
             recording,
             started_at: Instant::now(),

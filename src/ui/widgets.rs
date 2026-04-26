@@ -12,6 +12,12 @@ pub const BAND_GREEN: Color = Color::Rgb(0, 255, 0);
 pub const BAND_YELLOW: Color = Color::Rgb(255, 255, 0);
 pub const BAND_RED: Color = Color::Rgb(255, 0, 0);
 
+/// Dim variants — used by the waveform for live (non-recorded) audio so the
+/// recorded portion stands out at full brightness.
+pub const BAND_GREEN_DIM: Color = Color::Rgb(0, 80, 0);
+pub const BAND_YELLOW_DIM: Color = Color::Rgb(80, 80, 0);
+pub const BAND_RED_DIM: Color = Color::Rgb(80, 0, 0);
+
 const SILENCE_LEVEL: f32 = 0.0001;
 const SILENCE_DB: f32 = -80.0;
 
