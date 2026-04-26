@@ -285,15 +285,20 @@ fn footer_line(app: &App) -> Line<'static> {
         } => {
             spans.extend(key_hint("T", "take  ", Color::Cyan));
             spans.extend(key_hint("Space", "mark  ", Color::Cyan));
-            if app.timeline.can_delete_last_marker() {
+            let last_unbound = app.timeline.last_marker_unbound();
+            if last_unbound {
                 spans.extend(key_hint("Backspace", "unmark  ", Color::Cyan));
+                spans.extend(key_hint("N", "name take  ", Color::Cyan));
             } else {
                 spans.push(Span::styled(
                     "[Backspace] unmark  ",
                     Style::default().fg(Color::DarkGray),
                 ));
+                spans.push(Span::styled(
+                    "[N] name take  ",
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
-            spans.extend(key_hint("N", "name last  ", Color::Cyan));
             spans.extend(key_hint("W", "window  ", Color::Cyan));
             spans.extend(key_hint("Esc", "stop", Color::DarkGray));
         }

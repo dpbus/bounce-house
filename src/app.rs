@@ -148,9 +148,9 @@ impl App {
         }
     }
 
-    pub fn name_last_unbound(&mut self) {
+    pub fn name_take(&mut self) {
         if self.is_recording_active() {
-            self.timeline.name_last_unbound();
+            self.timeline.name_take();
         }
     }
 

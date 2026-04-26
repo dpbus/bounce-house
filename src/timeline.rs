@@ -65,15 +65,15 @@ impl Timeline {
         self.creating = Some(CreatingTake::Fresh(String::new()));
     }
 
-    pub fn name_last_unbound(&mut self) {
-        if self.creating.is_some() { return; }
-        if self.target_marker_idx().is_some() {
-            self.creating = Some(CreatingTake::Retroactive(String::new()));
-        }
+    pub fn name_take(&mut self) {
+        if !self.last_marker_unbound() { return; }
+        self.creating = Some(CreatingTake::Retroactive(String::new()));
     }
 
-    /// Whether `delete_last_marker` would succeed.
-    pub fn can_delete_last_marker(&self) -> bool {
+    /// Whether the last marker exists and isn't part of any take. Shared
+    /// precondition for delete and retroactive name — both act on the
+    /// literal last marker.
+    pub fn last_marker_unbound(&self) -> bool {
         if self.creating.is_some() || self.markers.len() <= 1 {
             return false;
         }
@@ -84,7 +84,7 @@ impl Timeline {
     /// Pop the last marker if it isn't part of any take. The recording-start
     /// marker is protected.
     pub fn delete_last_marker(&mut self) -> bool {
-        if !self.can_delete_last_marker() {
+        if !self.last_marker_unbound() {
             return false;
         }
         self.markers.pop();
@@ -108,11 +108,13 @@ impl Timeline {
         }
         self.creating = None;
 
-        let Some(end_idx) = self.target_marker_idx() else { return; };
+        // Both Fresh (T just placed it) and Retroactive (only opened if
+        // unbound) target the literal last marker.
+        let [.., second_last, last] = self.markers.as_slice() else { return; };
         let take = Take {
             name: trimmed,
-            start_tick: self.markers[end_idx - 1].tick,
-            end_tick: self.markers[end_idx].tick,
+            start_tick: second_last.tick,
+            end_tick: last.tick,
             color_index: self.next_color,
         };
         self.next_color = self.next_color.wrapping_add(1);
@@ -140,13 +142,4 @@ impl Timeline {
             .map(|t| t.color_index)
     }
 
-    fn target_marker_idx(&self) -> Option<usize> {
-        self.markers.iter()
-            .enumerate()
-            .rev()
-            .find(|&(i, m)| {
-                i > 0 && !self.takes.iter().any(|t| t.end_tick == m.tick)
-            })
-            .map(|(i, _)| i)
-    }
 }
