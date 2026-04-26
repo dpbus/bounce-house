@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use chrono::Local;
 
-use crate::audio::{ArmedChannel, Device, Engine, Recording, RecordingConfig};
+use crate::audio::{ArmedChannel, Device, DiskWriter, Engine, DiskWriterConfig};
 use crate::session::Session;
 use crate::timeline::Timeline;
 use crate::units::{ChannelIndex, SamplePosition};
@@ -37,7 +37,7 @@ pub struct App {
 pub enum AppState {
     Idle,
     Recording {
-        recording: Recording,
+        recording: DiskWriter,
         started_at: Instant,
         confirming_stop: bool,
     },
@@ -117,9 +117,9 @@ impl App {
         let output_dir = self.session.raw_dir.join(&timestamp);
 
         let consumer = self.engine.start_recording();
-        let recording = Recording::start(
+        let recording = DiskWriter::start(
             consumer,
-            RecordingConfig {
+            DiskWriterConfig {
                 output_dir,
                 sample_rate: self.engine.sample_rate(),
                 total_channel_count: self.engine.channel_count(),
@@ -127,6 +127,7 @@ impl App {
             },
         );
 
+        self.timeline = Timeline::new();
         self.timeline.mark(self.total_ticks);
         self.state = AppState::Recording {
             recording,
@@ -172,8 +173,8 @@ impl App {
         // time it returns, no more samples will land in the rtrb.
         self.engine.stop_recording();
         self.timeline.mark(self.total_ticks);
-        // Replacing the state drops the Recording, whose Drop joins the writer
-        // thread (which drains the rtrb and finalizes the WAV).
+        // Replacing the state drops the DiskWriter, whose Drop joins the
+        // writer thread (which drains the rtrb and finalizes the WAV).
         self.state = AppState::Idle;
     }
 

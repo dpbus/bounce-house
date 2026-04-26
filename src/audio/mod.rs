@@ -1,8 +1,8 @@
 mod device;
+mod disk_writer;
 mod engine;
 mod levels;
-mod recording;
 
 pub use device::Device;
+pub use disk_writer::{ArmedChannel, DiskWriter, DiskWriterConfig};
 pub use engine::Engine;
-pub use recording::{ArmedChannel, Recording, RecordingConfig};

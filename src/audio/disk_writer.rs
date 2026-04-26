@@ -26,7 +26,7 @@ pub struct ArmedChannel {
     pub label: Option<String>,
 }
 
-pub struct RecordingConfig {
+pub struct DiskWriterConfig {
     /// Folder that will hold one WAV per armed channel (plus continuation
     /// files for any channel that crosses 4 GB).
     pub output_dir: PathBuf,
@@ -37,14 +37,14 @@ pub struct RecordingConfig {
     pub armed: Vec<ArmedChannel>,
 }
 
-pub struct Recording {
+pub struct DiskWriter {
     output_dir: PathBuf,
     stop_signal: Arc<AtomicBool>,
     writer_thread: Option<JoinHandle<()>>,
 }
 
-impl Recording {
-    pub fn start(consumer: rtrb::Consumer<f32>, config: RecordingConfig) -> Self {
+impl DiskWriter {
+    pub fn start(consumer: rtrb::Consumer<f32>, config: DiskWriterConfig) -> Self {
         std::fs::create_dir_all(&config.output_dir)
             .expect("Failed to create recording directory");
 
@@ -56,7 +56,7 @@ impl Recording {
             thread::spawn(move || write_to_disk(consumer, config, stop_signal))
         };
 
-        Recording {
+        DiskWriter {
             output_dir,
             stop_signal,
             writer_thread: Some(writer_thread),
@@ -68,7 +68,7 @@ impl Recording {
     }
 }
 
-impl Drop for Recording {
+impl Drop for DiskWriter {
     fn drop(&mut self) {
         self.stop_signal.store(true, Ordering::Relaxed);
         if let Some(handle) = self.writer_thread.take() {
@@ -79,7 +79,7 @@ impl Drop for Recording {
 
 fn write_to_disk(
     mut consumer: rtrb::Consumer<f32>,
-    config: RecordingConfig,
+    config: DiskWriterConfig,
     stop_signal: Arc<AtomicBool>,
 ) {
     let total = config.total_channel_count as usize;
@@ -128,7 +128,7 @@ fn write_to_disk(
 }
 
 fn open_writers(
-    config: &RecordingConfig,
+    config: &DiskWriterConfig,
     spec: WavSpec,
     part: u32,
 ) -> Vec<WavWriter<BufWriter<File>>> {
