@@ -4,6 +4,7 @@ mod main_view;
 mod meter_panel;
 mod recording_panel;
 mod session_panel;
+mod template_save;
 mod waveform;
 mod widgets;
 
@@ -11,7 +12,7 @@ use std::io::{self, stdout};
 use std::time::Duration;
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent},
+    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -58,6 +59,9 @@ fn main_loop(
             if matches!(app.state, AppState::PickingChannel { .. }) {
                 channel_picker::draw(frame, app);
             }
+            if matches!(app.state, AppState::SavingTemplate { .. }) {
+                template_save::draw(frame, app);
+            }
         })?;
 
         if event::poll(Duration::from_millis(16))? {
@@ -102,6 +106,11 @@ enum KeyAction {
     PickerCommitRename,
     PickerAppendChar(char),
     PickerBackspace,
+    BeginSaveTemplate,
+    CancelSaveTemplate,
+    CommitSaveTemplate,
+    SaveTemplateAppendChar(char),
+    SaveTemplateBackspace,
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
@@ -112,6 +121,13 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             Enter => KeyAction::CommitTakeNaming,
             Backspace => KeyAction::TakeNameBackspace,
             Char(c) => KeyAction::TakeNameAppendChar(c),
+            _ => KeyAction::None,
+        },
+        AppState::SavingTemplate { .. } => match key.code {
+            Esc => KeyAction::CancelSaveTemplate,
+            Enter => KeyAction::CommitSaveTemplate,
+            Backspace => KeyAction::SaveTemplateBackspace,
+            Char(c) => KeyAction::SaveTemplateAppendChar(c),
             _ => KeyAction::None,
         },
         AppState::ConfirmingStop => match key.code {
@@ -145,6 +161,9 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             _ => KeyAction::None,
         },
         AppState::Default => match key.code {
+            Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                KeyAction::BeginSaveTemplate
+            }
             Char('q') | Char('Q') | Esc => KeyAction::Quit,
             Char('r') | Char('R') => KeyAction::StartRecording,
             Char('c') | Char('C') => KeyAction::OpenPicker,
@@ -249,6 +268,11 @@ fn apply(app: &mut App, action: KeyAction) {
                 buf.pop();
             }
         }
+        KeyAction::BeginSaveTemplate => app.begin_save_template(),
+        KeyAction::CancelSaveTemplate => app.cancel_save_template(),
+        KeyAction::CommitSaveTemplate => app.commit_save_template(),
+        KeyAction::SaveTemplateAppendChar(c) => app.save_template_append_char(c),
+        KeyAction::SaveTemplateBackspace => app.save_template_backspace(),
     }
 }
 

@@ -6,7 +6,7 @@ use crate::channel::Channel;
 use crate::ui::widgets::{panel, vertical_meter};
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Meters", None);
+    let inner = panel(frame, area, "Meters", None, None);
 
     let armed: Vec<&Channel> = app.session.armed().collect();
     if armed.is_empty() {

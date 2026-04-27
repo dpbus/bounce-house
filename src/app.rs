@@ -1,12 +1,13 @@
 use std::collections::VecDeque;
 
-use chrono::Local;
+use chrono::{DateTime, Duration, Local};
 
 use crate::audio::{ArmedChannel, Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::config::Config;
 use crate::recording::Recording;
 use crate::session::Session;
+use crate::template::{self, Template};
 use crate::timeline::Timeline;
 
 const FAST_DECAY: f32 = 0.976;
@@ -31,7 +32,16 @@ pub struct App {
     pub level_history: VecDeque<LevelSample>,
     pub total_ticks: u64,
     pub waveform_window_secs: u64,
+    last_template_save: Option<TemplateSave>,
 }
+
+#[derive(Clone)]
+pub struct TemplateSave {
+    pub name: String,
+    pub at: DateTime<Local>,
+}
+
+const TEMPLATE_SAVE_FEEDBACK_SECS: i64 = 3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct LevelSample {
@@ -51,6 +61,9 @@ pub enum AppState {
     PickingChannel {
         cursor: usize,
         renaming: Option<String>,
+    },
+    SavingTemplate {
+        buf: String,
     },
 }
 
@@ -86,7 +99,16 @@ impl App {
             level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
             total_ticks: 0,
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
+            last_template_save: None,
         }
+    }
+
+    /// Returns the most recent template save if its feedback window is still
+    /// active. Used by the UI to show a transient "saved" confirmation.
+    pub fn recent_template_save(&self) -> Option<&TemplateSave> {
+        self.last_template_save
+            .as_ref()
+            .filter(|s| Local::now() - s.at < Duration::seconds(TEMPLATE_SAVE_FEEDBACK_SECS))
     }
 
     pub fn is_recording(&self) -> bool {
@@ -324,6 +346,55 @@ impl App {
 
     pub fn take_name_backspace(&mut self) {
         if let AppState::NamingTake { buf, .. } = &mut self.state {
+            buf.pop();
+        }
+    }
+
+    pub fn begin_save_template(&mut self) {
+        if self.is_recording() || !matches!(self.state, AppState::Default) {
+            return;
+        }
+        self.state = AppState::SavingTemplate {
+            buf: String::new(),
+        };
+    }
+
+    pub fn cancel_save_template(&mut self) {
+        if matches!(self.state, AppState::SavingTemplate { .. }) {
+            self.state = AppState::Default;
+        }
+    }
+
+    pub fn commit_save_template(&mut self) {
+        let AppState::SavingTemplate { buf } = &self.state else {
+            return;
+        };
+        let name = buf.trim();
+        if !template::is_valid_name(name) {
+            return;
+        }
+        let path = template::path_for_name(&self.config.templates_dir, name);
+        let template = Template {
+            device_name: self.engine.device_name().to_string(),
+            channels: self.session.channels.clone(),
+        };
+        if template.save(&path).is_ok() {
+            self.last_template_save = Some(TemplateSave {
+                name: name.to_string(),
+                at: Local::now(),
+            });
+        }
+        self.state = AppState::Default;
+    }
+
+    pub fn save_template_append_char(&mut self, c: char) {
+        if let AppState::SavingTemplate { buf } = &mut self.state {
+            buf.push(c);
+        }
+    }
+
+    pub fn save_template_backspace(&mut self) {
+        if let AppState::SavingTemplate { buf } = &mut self.state {
             buf.pop();
         }
     }

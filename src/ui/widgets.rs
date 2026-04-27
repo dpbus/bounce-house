@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Padding, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
 const MIN_DB: f32 = -45.0;
 const MAX_DB: f32 = 6.0;
@@ -244,13 +244,14 @@ pub fn key_hint_when(
     }
 }
 
-/// Bordered panel with a title at top-left, an optional hint on the
-/// bottom border (alignment baked in by the caller), and consistent
+/// Bordered panel with a title at top-left, optional hints on the top-right
+/// and bottom borders (alignment baked in by the caller), and consistent
 /// inner padding. Renders the block and returns the inner drawing area.
 pub fn panel(
     frame: &mut Frame,
     area: Rect,
     title: &'static str,
+    top_right_hint: Option<Line<'static>>,
     bottom_hint: Option<Line<'static>>,
 ) -> Rect {
     let mut block = Block::default()
@@ -258,6 +259,9 @@ pub fn panel(
         .borders(Borders::ALL)
         .padding(Padding::new(2, 2, 1, 1))
         .border_style(Style::default().fg(Color::DarkGray));
+    if let Some(hint) = top_right_hint {
+        block = block.title(hint);
+    }
     if let Some(hint) = bottom_hint {
         block = block.title_bottom(hint);
     }
@@ -280,6 +284,47 @@ pub fn dim_status(text: &'static str) -> Vec<Line<'static>> {
         text,
         Style::default().fg(Color::DarkGray),
     ))]
+}
+
+/// Cells consumed by `Borders::ALL` along each axis (1 cell on each of
+/// the two perpendicular sides). Exposed so callers sizing modals from
+/// content dimensions can budget the available space against the frame.
+pub const MODAL_BORDER_OVERHEAD: u16 = 2;
+
+/// Renders a centered modal sized to hold `content_width` × `content_height`
+/// cells of content, plus chrome. Draws Clear + a cyan-bordered Block with
+/// `title` and returns the inner Rect for the caller to render content
+/// into. Caller thinks in content terms; chrome is fully internalized.
+pub fn modal(
+    frame: &mut Frame,
+    title: &str,
+    content_width: u16,
+    content_height: u16,
+) -> Rect {
+    let outer = center_rect(
+        frame.area(),
+        content_width.saturating_add(MODAL_BORDER_OVERHEAD),
+        content_height.saturating_add(MODAL_BORDER_OVERHEAD),
+    );
+    frame.render_widget(Clear, outer);
+    let block = Block::default()
+        .title(format!(" {} ", title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(outer);
+    frame.render_widget(block, outer);
+    inner
+}
+
+fn center_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+    Rect::new(
+        area.x + (area.width - width) / 2,
+        area.y + (area.height - height) / 2,
+        width,
+        height,
+    )
 }
 
 /// Renders `lines` newspaper-style across `n_cols` equal columns of

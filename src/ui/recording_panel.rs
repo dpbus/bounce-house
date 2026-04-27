@@ -7,7 +7,7 @@ use crate::timeline::BounceStatus;
 use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, spinner_glyph, take_color};
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Recording", naming_hint(app));
+    let inner = panel(frame, area, "Recording", None, naming_hint(app));
 
     if matches!(app.state, AppState::PickingChannel { .. }) {
         frame.render_widget(Paragraph::new(dim_status("Channel picker open")), inner);

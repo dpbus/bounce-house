@@ -1,26 +1,24 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, AppState};
 use crate::channel::Channel;
-use crate::ui::widgets::{horizontal_meter, key_hint};
+use crate::ui::widgets::{horizontal_meter, key_hint, modal, MODAL_BORDER_OVERHEAD};
 
 const METER_WIDTH: usize = 30;
+const WIDTH_PCT: u16 = 80;
+const HEIGHT_PCT: u16 = 30;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let AppState::PickingChannel { cursor, renaming } = &app.state else {
         return;
     };
 
-    let area = centered_rect(frame.area(), 80, 30);
-
-    frame.render_widget(Clear, area);
-    let block = Block::default()
-        .title(" Channels ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let frame_area = frame.area();
+    let content_width = (frame_area.width * WIDTH_PCT / 100).saturating_sub(MODAL_BORDER_OVERHEAD);
+    let content_height =
+        (frame_area.height * HEIGHT_PCT / 100).saturating_sub(MODAL_BORDER_OVERHEAD);
+    let inner = modal(frame, "Channels", content_width, content_height);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -111,22 +109,3 @@ fn footer_line(renaming: &Option<String>) -> Line<'static> {
     }
 }
 
-fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
