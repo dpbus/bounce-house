@@ -8,7 +8,6 @@ mod waveform;
 mod widgets;
 
 use std::io::{self, stdout};
-use std::path::PathBuf;
 use std::time::Duration;
 
 use crossterm::{
@@ -19,6 +18,7 @@ use crossterm::{
 use ratatui::prelude::*;
 
 use crate::app::{App, AppState};
+use crate::config::Config;
 
 pub fn run() -> io::Result<()> {
     terminal::enable_raw_mode()?;
@@ -40,10 +40,9 @@ fn bootstrap(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Resul
         Err(e) => return Err(e),
     };
 
-    let raw_dir = PathBuf::from("./recordings");
-    std::fs::create_dir_all(&raw_dir)?;
+    let config = Config::load_or_create()?;
 
-    let mut app = App::new(device, raw_dir);
+    let mut app = App::new(device, config);
     main_loop(terminal, &mut app)
 }
 

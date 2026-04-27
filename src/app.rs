@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
-use std::path::PathBuf;
 
 use chrono::Local;
 
 use crate::audio::{ArmedChannel, Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
+use crate::config::Config;
 use crate::recording::Recording;
 use crate::session::Session;
 use crate::timeline::Timeline;
@@ -20,6 +20,7 @@ const MAX_HISTORY_SECS: usize = 1800;
 const LEVEL_HISTORY_CAPACITY_HINT: usize = MAX_HISTORY_SECS * 100;
 
 pub struct App {
+    pub config: Config,
     pub session: Session,
     pub engine: EngineHandle,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
@@ -69,11 +70,12 @@ pub enum AppError {
 }
 
 impl App {
-    pub fn new(device: Device, raw_dir: PathBuf) -> Self {
+    pub fn new(device: Device, config: Config) -> Self {
         let (engine, levels_consumer) = EngineHandle::start(device);
         let n = engine.channel_count() as usize;
-        let session = Session::new(engine.channel_count(), raw_dir);
+        let session = Session::new(engine.channel_count());
         App {
+            config,
             session,
             engine,
             levels_consumer,
@@ -179,7 +181,7 @@ impl App {
         }
 
         let timestamp = Local::now().format("%Y-%m-%d-%H%M%S").to_string();
-        let output_dir = self.session.raw_dir.join(&timestamp);
+        let output_dir = self.config.projects_dir.join(&timestamp);
 
         let consumer = self.engine.start_recording();
         let recording = Recording::start(
@@ -300,7 +302,8 @@ impl App {
                     new_job = Some(BounceJob {
                         take: take.clone(),
                         sample_rate,
-                        output_dir: r.output_dir.clone(),
+                        output_dir: self.config.bounces_dir.clone(),
+                        recording_timestamp: r.started_at.format("%Y-%m-%d-%H%M%S").to_string(),
                         channel_files: r.channel_files.clone(),
                         flushed_samples,
                     });

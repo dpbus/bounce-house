@@ -2,6 +2,7 @@ mod app;
 mod audio;
 mod bounce;
 mod channel;
+mod config;
 mod recording;
 mod session;
 mod timeline;
