@@ -5,7 +5,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use cpal::traits::StreamTrait;
 
 use crate::audio::Device;
-use crate::audio::levels::{ChannelLevel, LevelObservation, MAX_CHANNELS};
+use crate::audio::levels::{LevelObservation, MAX_CHANNELS};
 use crate::units::SampleRate;
 
 pub const RECORDING_BUFFER_SECONDS: usize = 10;
@@ -19,7 +19,6 @@ const LEVEL_BUFFER_CAPACITY: usize = 1000;
 pub struct EngineHandle {
     _stream: cpal::Stream,
     device: Device,
-    levels: Arc<[ChannelLevel]>,
     sample_position: Arc<AtomicU64>,
     cmd_tx: Sender<Command>,
 }
@@ -33,7 +32,6 @@ enum Command {
 /// working peak buffer, the recording producer (when recording), and the
 /// levels-observation producer; reads atomic state shared with the handle.
 struct Engine {
-    levels: Arc<[ChannelLevel]>,
     sample_position: Arc<AtomicU64>,
     total_channel_count: usize,
     peaks_buf: Vec<f32>,
@@ -48,17 +46,12 @@ impl EngineHandle {
             total_channel_count <= MAX_CHANNELS,
             "device has {total_channel_count} channels; MAX_CHANNELS={MAX_CHANNELS}",
         );
-        let levels: Arc<[ChannelLevel]> = (0..total_channel_count)
-            .map(|_| ChannelLevel::new())
-            .collect::<Vec<_>>()
-            .into();
         let sample_position = Arc::new(AtomicU64::new(0));
         let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
         let (levels_producer, levels_consumer) =
             rtrb::RingBuffer::<LevelObservation>::new(LEVEL_BUFFER_CAPACITY);
 
         let mut engine = Engine {
-            levels: levels.clone(),
             sample_position: sample_position.clone(),
             total_channel_count,
             peaks_buf: vec![0.0; total_channel_count],
@@ -79,7 +72,6 @@ impl EngineHandle {
         let handle = EngineHandle {
             _stream: stream,
             device,
-            levels,
             sample_position,
             cmd_tx,
         };
@@ -96,10 +88,6 @@ impl EngineHandle {
 
     pub fn sample_rate(&self) -> SampleRate {
         self.device.sample_rate()
-    }
-
-    pub fn levels(&self) -> &[ChannelLevel] {
-        &self.levels
     }
 
     pub fn sample_position(&self) -> u64 {
@@ -141,7 +129,7 @@ impl Engine {
     }
 
     /// Per-channel absolute peak across the callback. Fills `peaks_buf`
-    /// and forwards to the meter atomics. Returns the frame count.
+    /// and returns the frame count.
     fn scan_peaks(&mut self, data: &[f32]) -> usize {
         self.peaks_buf.fill(0.0);
         let frames = data.len() / self.total_channel_count;
@@ -152,9 +140,6 @@ impl Engine {
                     self.peaks_buf[ch] = sample;
                 }
             }
-        }
-        for (level, &peak) in self.levels.iter().zip(self.peaks_buf.iter()) {
-            level.record(peak);
         }
         frames
     }

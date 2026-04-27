@@ -99,25 +99,29 @@ impl App {
 
     pub fn tick_display(&mut self) {
         self.total_ticks += 1;
+        self.apply_bounce_status_updates();
+        self.drain_level_observations();
+        self.evict_old_level_history();
+    }
 
+    fn apply_bounce_status_updates(&mut self) {
         for update in self.bounce_pool.drain_updates() {
             if let Some(r) = &mut self.recording {
                 r.timeline.set_bounce_status(update.take_id, update.status);
             }
         }
+    }
 
-        // Meter strips: per-channel current peak with decay, via atomics.
-        for (i, level) in self.engine.levels().iter().enumerate() {
-            let peak = level.take_current();
-            self.display_levels[i] = peak.max(self.display_levels[i] * FAST_DECAY);
-            self.peak_holds[i] = peak.max(self.peak_holds[i] * SLOW_DECAY);
-        }
-
-        // Waveform history: drain observations from the audio thread.
+    /// Pull every available observation off the audio thread, feeding
+    /// both the meter strips (per-channel max + decay) and the waveform
+    /// history (combined armed-channel peak per observation).
+    fn drain_level_observations(&mut self) {
         let n_channels = self.session.channels.len();
+        let mut tick_max = vec![0.0f32; n_channels];
         while let Ok(obs) = self.levels_consumer.pop() {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
+                tick_max[i] = tick_max[i].max(peak);
                 if self.session.channels[i].armed {
                     combined = combined.max(peak);
                 }
@@ -128,6 +132,13 @@ impl App {
                 recorded: obs.recorded,
             });
         }
+        for (i, &peak) in tick_max.iter().enumerate() {
+            self.display_levels[i] = peak.max(self.display_levels[i] * FAST_DECAY);
+            self.peak_holds[i] = peak.max(self.peak_holds[i] * SLOW_DECAY);
+        }
+    }
+
+    fn evict_old_level_history(&mut self) {
         let sample_rate = self.engine.sample_rate().0 as u64;
         let cutoff = self
             .engine
