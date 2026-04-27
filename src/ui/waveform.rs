@@ -50,7 +50,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         app.engine.sample_position(),
     );
     let amps = waveform_amps(&app.level_history, &layout);
-    let marker_columns: Vec<(Color, usize)> = app
+    let marker_columns: Vec<(Option<u8>, usize)> = app
         .recording
         .as_ref()
         .map(|r| {
@@ -58,14 +58,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
                 .markers()
                 .iter()
                 .filter_map(|m| {
-                    let abs = r.start_sample + m.sample;
-                    let col = layout.sample_to_column(abs)?;
-                    let color = r
-                        .timeline
-                        .marker_color_index(m.sample)
-                        .map(|i| take_color(i as usize))
-                        .unwrap_or(Color::DarkGray);
-                    Some((color, col))
+                    let col = layout.sample_to_column(r.start_sample + m.sample)?;
+                    Some((r.timeline.marker_color_index(m.sample), col))
                 })
                 .collect()
         })
@@ -116,22 +110,47 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         });
     frame.render_widget(canvas, canvas_area);
 
+    // For close marker clusters (within 1 canvas_col), prefer take-bound
+    // markers over unbound ones; otherwise keep the latest. Snap-invariant
+    // — relative canvas_col deltas are preserved across grid shifts.
+    let mut kept: Vec<(Option<u8>, usize)> = Vec::new();
+    let consider = |kept: &mut Vec<(Option<u8>, usize)>, m: (Option<u8>, usize)| {
+        if !kept.iter().any(|k| k.1.abs_diff(m.1) <= 1) {
+            kept.push(m);
+        }
+    };
+    for &m in marker_columns.iter().rev() {
+        if m.0.is_some() {
+            consider(&mut kept, m);
+        }
+    }
+    for &m in marker_columns.iter().rev() {
+        if m.0.is_none() {
+            consider(&mut kept, m);
+        }
+    }
+
     let buf = frame.buffer_mut();
-    for &(color, canvas_col) in &marker_columns {
+    for &(color_index, canvas_col) in &kept {
         let term_col = inner.x + (canvas_col / 2) as u16;
         if term_col >= inner.right() {
             continue;
         }
         let glyph = if canvas_col % 2 == 0 { "▌" } else { "▐" };
+        let color = color_index
+            .map(|i| take_color(i as usize))
+            .unwrap_or(Color::DarkGray);
         let style = Style::default().fg(color);
         buf.set_string(term_col, top_marker_y, glyph, style);
         buf.set_string(term_col, bottom_marker_y, glyph, style);
     }
 }
 
-/// Maps engine-absolute samples onto canvas columns. The window's right
-/// edge is anchored to `current_sample` (now); each column covers a fixed
-/// span of samples.
+/// Maps engine-absolute samples onto canvas columns. Leftmost is snapped
+/// to a bucket grid so historical buckets stay aligned across frames; the
+/// rightmost bucket contains `current_sample`, so live observations land
+/// there immediately. The whole grid jump-shifts one column when
+/// `current_sample` crosses to the next bucket boundary.
 struct WaveformLayout {
     cols: usize,
     leftmost_sample: u64,
@@ -142,7 +161,8 @@ impl WaveformLayout {
     fn new(window_secs: u64, cols: usize, sample_rate: u64, current_sample: u64) -> Self {
         let visible_samples = window_secs.saturating_mul(sample_rate);
         let samples_per_col = (visible_samples / cols as u64).max(1);
-        let leftmost_sample = current_sample.saturating_sub(visible_samples);
+        let snap_down = (current_sample / samples_per_col) * samples_per_col;
+        let leftmost_sample = snap_down.saturating_sub(samples_per_col * (cols as u64 - 1));
         Self { cols, leftmost_sample, samples_per_col }
     }
 

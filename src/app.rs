@@ -106,22 +106,28 @@ impl App {
             }
         }
 
-        let recorded = self.is_recording();
-        let sample = self.engine.sample_position();
-        let mut combined_peak = 0.0f32;
+        // Meter strips: per-channel current peak with decay, via atomics.
         for (i, level) in self.engine.levels().iter().enumerate() {
             let peak = level.take_current();
             self.display_levels[i] = peak.max(self.display_levels[i] * FAST_DECAY);
             self.peak_holds[i] = peak.max(self.peak_holds[i] * SLOW_DECAY);
-            if self.session.channels[i].armed {
-                combined_peak = combined_peak.max(peak);
-            }
         }
-        self.level_history.push_back(LevelSample {
-            sample,
-            peak: combined_peak,
-            recorded,
-        });
+
+        // Waveform history: drain observations from the audio thread.
+        let n_channels = self.session.channels.len();
+        while let Ok(obs) = self.levels_consumer.pop() {
+            let mut combined = 0.0f32;
+            for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
+                if self.session.channels[i].armed {
+                    combined = combined.max(peak);
+                }
+            }
+            self.level_history.push_back(LevelSample {
+                sample: obs.sample,
+                peak: combined,
+                recorded: obs.recorded,
+            });
+        }
         while self.level_history.len() > MAX_HISTORY_ENTRIES {
             self.level_history.pop_front();
         }
