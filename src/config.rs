@@ -6,9 +6,11 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub projects_dir: PathBuf,
     pub bounces_dir: PathBuf,
+    pub templates_dir: PathBuf,
 }
 
 impl Default for Config {
@@ -17,6 +19,7 @@ impl Default for Config {
         Self {
             projects_dir: home.join("Music/BounceHouse/Projects"),
             bounces_dir: home.join("Music/BounceHouse/Bounces"),
+            templates_dir: home.join("Music/BounceHouse/Templates"),
         }
     }
 }
@@ -37,6 +40,7 @@ impl Config {
         };
         fs::create_dir_all(&cfg.projects_dir)?;
         fs::create_dir_all(&cfg.bounces_dir)?;
+        fs::create_dir_all(&cfg.templates_dir)?;
         Ok(cfg)
     }
 

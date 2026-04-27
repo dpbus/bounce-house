@@ -5,6 +5,7 @@ mod channel;
 mod config;
 mod recording;
 mod session;
+mod template;
 mod timeline;
 mod ui;
 mod units;
