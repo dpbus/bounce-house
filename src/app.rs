@@ -13,14 +13,14 @@ use crate::units::ChannelIndex;
 const FAST_DECAY: f32 = 0.976;
 const SLOW_DECAY: f32 = 0.990;
 
-/// Approximate UI tick rate. Used to size waveform history relative to wall-clock time.
-pub const TICK_FPS: usize = 60;
-
 /// Available waveform window sizes in seconds. Cycled through with the W key.
 pub const WAVEFORM_WINDOWS_SECS: &[u64] = &[10, 30, 60, 300, 1800];
 
 const MAX_HISTORY_SECS: usize = 1800;
-const MAX_HISTORY_ENTRIES: usize = MAX_HISTORY_SECS * TICK_FPS;
+/// Initial capacity hint for level_history. Sized for ~100Hz observation
+/// rate × MAX_HISTORY_SECS. Runtime growth is bounded by sample-threshold
+/// eviction, not by this hint.
+const LEVEL_HISTORY_CAPACITY_HINT: usize = MAX_HISTORY_SECS * 100;
 
 pub struct App {
     pub session: Session,
@@ -79,7 +79,7 @@ impl App {
             bounce_pool: BouncePool::start(),
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
-            level_history: VecDeque::with_capacity(MAX_HISTORY_ENTRIES + 1),
+            level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
             total_ticks: 0,
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
         }
@@ -128,7 +128,12 @@ impl App {
                 recorded: obs.recorded,
             });
         }
-        while self.level_history.len() > MAX_HISTORY_ENTRIES {
+        let sample_rate = self.engine.sample_rate().0 as u64;
+        let cutoff = self
+            .engine
+            .sample_position()
+            .saturating_sub(MAX_HISTORY_SECS as u64 * sample_rate);
+        while self.level_history.front().is_some_and(|e| e.sample < cutoff) {
             self.level_history.pop_front();
         }
     }
