@@ -183,9 +183,9 @@ impl WaveformLayout {
     fn new(window_secs: u64, cols: usize, sample_rate: u64, current_sample: u64) -> Self {
         let visible_samples = window_secs.saturating_mul(sample_rate);
         let samples_per_col = (visible_samples / cols as u64).max(1);
-        let snap_down = (current_sample / samples_per_col) * samples_per_col;
+        let current_bucket_start = (current_sample / samples_per_col) * samples_per_col;
         let leftmost_sample =
-            snap_down as i64 - (samples_per_col * (cols as u64 - 1)) as i64;
+            current_bucket_start as i64 - (samples_per_col * (cols as u64 - 1)) as i64;
         Self {
             cols,
             leftmost_sample,
