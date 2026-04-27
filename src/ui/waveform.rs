@@ -173,7 +173,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 /// `current_sample` crosses to the next bucket boundary.
 struct WaveformLayout {
     cols: usize,
-    leftmost_sample: u64,
+    /// Signed because in the early phase the visible window's left edge
+    /// is "before recording started" — a region with no audio data.
+    leftmost_sample: i64,
     samples_per_col: u64,
 }
 
@@ -182,7 +184,8 @@ impl WaveformLayout {
         let visible_samples = window_secs.saturating_mul(sample_rate);
         let samples_per_col = (visible_samples / cols as u64).max(1);
         let snap_down = (current_sample / samples_per_col) * samples_per_col;
-        let leftmost_sample = snap_down.saturating_sub(samples_per_col * (cols as u64 - 1));
+        let leftmost_sample =
+            snap_down as i64 - (samples_per_col * (cols as u64 - 1)) as i64;
         Self {
             cols,
             leftmost_sample,
@@ -191,10 +194,11 @@ impl WaveformLayout {
     }
 
     fn sample_to_column(&self, sample: u64) -> Option<usize> {
+        let sample = sample as i64;
         if sample < self.leftmost_sample {
             return None;
         }
-        let col = ((sample - self.leftmost_sample) / self.samples_per_col) as usize;
+        let col = ((sample - self.leftmost_sample) as u64 / self.samples_per_col) as usize;
         // The right edge sample (= current_sample) computes to col == cols
         // due to integer division; clamp so the latest tick lands in the
         // rightmost column rather than getting skipped.
@@ -219,7 +223,7 @@ fn waveform_amps(
                 let (amp, recorded) = buckets[col].unwrap_or((0.0, false));
                 buckets[col] = Some((amp.max(entry.peak), recorded || entry.recorded));
             }
-            None if entry.sample < layout.leftmost_sample => {
+            None if (entry.sample as i64) < layout.leftmost_sample => {
                 last_off_left = Some((entry.peak, entry.recorded));
             }
             None => {}
