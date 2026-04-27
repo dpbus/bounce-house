@@ -54,14 +54,14 @@ fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App, me
         ])
         .split(area);
 
-    let i = channel.index.as_usize();
+    let i = channel.index as usize;
     let level = app.display_levels[i];
     let peak = app.peak_holds[i];
     let lines = vertical_meter(level, Some(peak), meter_width, chunks[0].height as usize);
     let meter = Paragraph::new(lines).alignment(Alignment::Center);
     frame.render_widget(meter, chunks[0]);
 
-    let header = Paragraph::new(format!("Ch {:>2}", channel.index.0)).alignment(Alignment::Center);
+    let header = Paragraph::new(format!("Ch {:>2}", channel.index)).alignment(Alignment::Center);
     frame.render_widget(header, chunks[1]);
 
     let label_text = channel.label.as_deref().unwrap_or("—");

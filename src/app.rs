@@ -8,7 +8,6 @@ use crate::config::Config;
 use crate::recording::Recording;
 use crate::session::Session;
 use crate::timeline::Timeline;
-use crate::units::ChannelIndex;
 
 const FAST_DECAY: f32 = 0.976;
 const SLOW_DECAY: f32 = 0.990;
@@ -344,17 +343,17 @@ impl App {
         }
     }
 
-    pub fn toggle_armed(&mut self, idx: ChannelIndex) {
+    pub fn toggle_armed(&mut self, channel_index: u16) {
         if self.is_recording() {
             return;
         }
-        if let Some(channel) = self.session.channel_mut(idx) {
+        if let Some(channel) = self.session.channel_mut(channel_index) {
             channel.armed = !channel.armed;
         }
     }
 
-    pub fn set_label(&mut self, idx: ChannelIndex, label: Option<String>) {
-        if let Some(channel) = self.session.channel_mut(idx) {
+    pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
+        if let Some(channel) = self.session.channel_mut(channel_index) {
             channel.label = label;
         }
     }

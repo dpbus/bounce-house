@@ -74,12 +74,12 @@ fn channel_row<'a>(
     let mut spans = vec![Span::styled(
         format!(
             "{} Ch {:>2}  {:<16}  ",
-            armed_marker, channel.index.0, label_text
+            armed_marker, channel.index, label_text
         ),
         row_style,
     )];
 
-    let level = app.display_levels[channel.index.as_usize()];
+    let level = app.display_levels[channel.index as usize];
     spans.extend(horizontal_meter(level, None, METER_WIDTH));
 
     ListItem::new(Line::from(spans))

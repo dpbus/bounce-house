@@ -8,14 +8,14 @@ use std::time::{Duration, Instant};
 
 use hound::{SampleFormat, WavSpec, WavWriter};
 
-use crate::units::{ChannelIndex, SampleRate};
+use crate::units::SampleRate;
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 
 /// One armed channel: position in the interleaved frame plus user label
 /// for the filename.
 pub struct ArmedChannel {
-    pub index: ChannelIndex,
+    pub index: u16,
     pub label: Option<String>,
 }
 
@@ -121,7 +121,7 @@ fn write_to_disk(
             if filled == frame.len() {
                 for (writer, ch) in writers.iter_mut().zip(armed.iter()) {
                     writer
-                        .write_sample(frame[ch.index.as_usize()])
+                        .write_sample(frame[ch.index as usize])
                         .expect("Failed to write sample");
                 }
                 samples_written += 1;
@@ -182,8 +182,8 @@ fn channel_filename(ch: &ArmedChannel) -> String {
                     }
                 })
                 .collect();
-            format!("ch{:02}-{}.wav", ch.index.0, safe)
+            format!("ch{:02}-{}.wav", ch.index, safe)
         }
-        _ => format!("ch{:02}.wav", ch.index.0),
+        _ => format!("ch{:02}.wav", ch.index),
     }
 }

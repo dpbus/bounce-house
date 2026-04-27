@@ -191,9 +191,8 @@ fn apply(app: &mut App, action: KeyAction) {
             }
         }
         KeyAction::PickerToggleArmed => {
-            let idx = picker_cursor_index(app);
-            if let Some(idx) = idx {
-                app.toggle_armed(idx);
+            if let Some(channel_index) = focused_channel_index(app) {
+                app.toggle_armed(channel_index);
             }
         }
         KeyAction::PickerStartRename => {
@@ -208,25 +207,25 @@ fn apply(app: &mut App, action: KeyAction) {
             }
         }
         KeyAction::PickerCommitRename => {
-            let (idx, label) = match (&app.state, picker_cursor_index(app)) {
+            let (channel_index, label) = match (&app.state, focused_channel_index(app)) {
                 (
                     AppState::PickingChannel {
                         renaming: Some(buf),
                         ..
                     },
-                    Some(idx),
+                    Some(ci),
                 ) => {
                     let label = if buf.trim().is_empty() {
                         None
                     } else {
                         Some(buf.trim().to_string())
                     };
-                    (Some(idx), label)
+                    (Some(ci), label)
                 }
                 _ => (None, None),
             };
-            if let Some(idx) = idx {
-                app.set_label(idx, label);
+            if let Some(channel_index) = channel_index {
+                app.set_label(channel_index, label);
             }
             if let AppState::PickingChannel { renaming, .. } = &mut app.state {
                 *renaming = None;
@@ -253,7 +252,7 @@ fn apply(app: &mut App, action: KeyAction) {
     }
 }
 
-fn picker_cursor_index(app: &App) -> Option<crate::units::ChannelIndex> {
+fn focused_channel_index(app: &App) -> Option<u16> {
     if let AppState::PickingChannel { cursor, .. } = &app.state {
         app.session.channels.get(*cursor).map(|c| c.index)
     } else {
