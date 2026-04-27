@@ -22,7 +22,7 @@ use crate::app::{App, AppState};
 use crate::config::Config;
 use crate::template::Template;
 
-pub fn run(config: Config, template: Option<(String, Template)>) -> io::Result<()> {
+pub fn run(config: Config, template: Option<Template>) -> io::Result<()> {
     terminal::enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
@@ -38,7 +38,7 @@ pub fn run(config: Config, template: Option<(String, Template)>) -> io::Result<(
 fn bootstrap(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     config: Config,
-    template: Option<(String, Template)>,
+    template: Option<Template>,
 ) -> io::Result<()> {
     let device = match device_picker::pick(terminal) {
         Ok(d) => d,
@@ -47,8 +47,8 @@ fn bootstrap(
     };
 
     let mut app = App::new(device, config);
-    if let Some((name, t)) = template {
-        app.load_template(&name, &t);
+    if let Some(t) = template {
+        app.load_template(&t);
     }
     main_loop(terminal, &mut app)
 }

@@ -405,11 +405,12 @@ impl App {
         }
         let path = template::path_for_name(&self.config.templates_dir, name);
         let template = Template {
+            name: name.to_string(),
             device_name: self.engine.device_name().to_string(),
             channels: self.session.channels.clone(),
         };
         if template.save(&path).is_ok() {
-            self.last_template_save = Some(Flash::now(name.to_string()));
+            self.last_template_save = Some(Flash::now(template.name));
         }
         self.state = AppState::Default;
     }
@@ -430,14 +431,14 @@ impl App {
     /// confirmation. Out-of-range template indices are silently dropped;
     /// channels on the device not covered by the template keep their
     /// fresh defaults.
-    pub fn load_template(&mut self, name: &str, template: &Template) {
+    pub fn load_template(&mut self, template: &Template) {
         for tmpl_channel in &template.channels {
             if let Some(channel) = self.session.channel_mut(tmpl_channel.index) {
                 channel.label = tmpl_channel.label.clone();
                 channel.armed = tmpl_channel.armed;
             }
         }
-        self.last_template_load = Some(Flash::now(name.to_string()));
+        self.last_template_load = Some(Flash::now(template.name.clone()));
     }
 
     pub fn open_picker(&mut self) {

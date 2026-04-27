@@ -32,19 +32,12 @@ fn main() -> io::Result<()> {
     ui::run(config, template)
 }
 
-/// Resolves the user's `-t` argument and loads the template from disk,
-/// returning the display name (file stem) alongside the data. Errors
-/// print a warning and return None — the app boots without the template.
-fn load_template_from_cli(arg: &str, config: &Config) -> Option<(String, Template)> {
+/// Resolves the user's `-t` argument and loads the template from disk.
+/// Errors print a warning and return None — the app boots without it.
+fn load_template_from_cli(arg: &str, config: &Config) -> Option<Template> {
     let path = template::resolve_arg(arg, &config.templates_dir);
     match Template::load(&path) {
-        Ok(t) => {
-            let name = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| arg.to_string());
-            Some((name, t))
-        }
+        Ok(t) => Some(t),
         Err(e) => {
             eprintln!("warning: failed to load template '{}': {}", arg, e);
             None

@@ -8,6 +8,7 @@ use crate::channel::Channel;
 
 #[derive(Serialize, Deserialize)]
 pub struct Template {
+    pub name: String,
     pub device_name: String,
     #[serde(default)]
     pub channels: Vec<Channel>,
