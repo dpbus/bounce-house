@@ -5,7 +5,7 @@ use ratatui::symbols::Marker;
 use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 use ratatui::widgets::{Block, Borders};
 
-use crate::app::App;
+use crate::app::{App, LevelSample};
 use crate::ui::widgets::{
     BAND_GREEN, BAND_GREEN_DIM, BAND_RED, BAND_RED_DIM, BAND_YELLOW, BAND_YELLOW_DIM,
     band_thresholds, linear_to_db_fraction, take_color,
@@ -44,27 +44,32 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let height = canvas_area.height as usize;
 
     let layout = WaveformLayout::new(
-        app.level_history.len(),
         app.waveform_window_secs,
         cols,
-        app.measured_tick_rate(),
+        app.engine.sample_rate().0 as u64,
+        app.engine.sample_position(),
     );
     let amps = waveform_amps(&app.level_history, &layout);
     let marker_columns: Vec<(Color, usize)> = app
-        .current_timeline()
-        .map(|t| t.markers())
-        .unwrap_or(&[])
-        .iter()
-        .filter_map(|m| {
-            let col = layout.tick_to_column(m.tick, app.total_ticks)?;
-            let color = app
-                .current_timeline()
-                .and_then(|t| t.marker_color_index(m.tick))
-                .map(|i| take_color(i as usize))
-                .unwrap_or(Color::DarkGray);
-            Some((color, col))
+        .recording
+        .as_ref()
+        .map(|r| {
+            r.timeline
+                .markers()
+                .iter()
+                .filter_map(|m| {
+                    let abs = r.start_sample + m.sample;
+                    let col = layout.sample_to_column(abs)?;
+                    let color = r
+                        .timeline
+                        .marker_color_index(m.sample)
+                        .map(|i| take_color(i as usize))
+                        .unwrap_or(Color::DarkGray);
+                    Some((color, col))
+                })
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
     let (warn, clip) = band_thresholds();
     let (warn, clip) = (warn as f64, clip as f64);
     // 1 braille pixel of vertical extent — keeps the centerline visible
@@ -124,64 +129,71 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-/// Maps the rotating level history onto canvas columns. Buckets anchor to
-/// absolute history indices, so each is sealed once its time has passed.
+/// Maps engine-absolute samples onto canvas columns. The window's right
+/// edge is anchored to `current_sample` (now); each column covers a fixed
+/// span of samples.
 struct WaveformLayout {
     cols: usize,
-    history_len: usize,
-    bucket_size: usize,
-    leftmost: i64,
+    leftmost_sample: u64,
+    samples_per_col: u64,
 }
 
 impl WaveformLayout {
-    fn new(history_len: usize, window_secs: u64, cols: usize, tick_rate: f32) -> Self {
-        let visible_ticks = (window_secs as f32 * tick_rate) as usize;
-        let bucket_size = (visible_ticks / cols).max(1);
-        let latest_bucket = (history_len / bucket_size) as i64;
-        let leftmost = latest_bucket - (cols as i64 - 1);
-        Self { cols, history_len, bucket_size, leftmost }
+    fn new(window_secs: u64, cols: usize, sample_rate: u64, current_sample: u64) -> Self {
+        let visible_samples = window_secs.saturating_mul(sample_rate);
+        let samples_per_col = (visible_samples / cols as u64).max(1);
+        let leftmost_sample = current_sample.saturating_sub(visible_samples);
+        Self { cols, leftmost_sample, samples_per_col }
     }
 
-    /// History range for column `col`, or `None` if outside the visible
-    /// data (pre-recording past the left edge, or unfilled at the right).
-    fn column_range(&self, col: usize) -> Option<(usize, usize)> {
-        let bucket_idx = self.leftmost + col as i64;
-        if bucket_idx < 0 {
+    fn sample_to_column(&self, sample: u64) -> Option<usize> {
+        if sample < self.leftmost_sample {
             return None;
         }
-        let start = bucket_idx as usize * self.bucket_size;
-        let end = (start + self.bucket_size).min(self.history_len);
-        if start >= end { None } else { Some((start, end)) }
-    }
-
-    /// Column for an absolute `tick`, or `None` if the tick has rotated
-    /// out of the visible window.
-    fn tick_to_column(&self, tick: u64, total_ticks: u64) -> Option<usize> {
-        let oldest_visible = total_ticks.saturating_sub(self.history_len as u64);
-        if tick < oldest_visible || tick >= total_ticks {
-            return None;
-        }
-        let history_index = (tick - oldest_visible) as usize;
-        let bucket_idx = (history_index / self.bucket_size) as i64;
-        let col = bucket_idx - self.leftmost;
-        (col >= 0 && (col as usize) < self.cols).then_some(col as usize)
+        let col = ((sample - self.leftmost_sample) / self.samples_per_col) as usize;
+        // The right edge sample (= current_sample) computes to col == cols
+        // due to integer division; clamp so the latest tick lands in the
+        // rightmost column rather than getting skipped.
+        Some(col.min(self.cols - 1))
     }
 }
 
-/// `(amp, was_recording)` per pixel column. The `was_recording` flag is
-/// true if any sample in the bucket was captured to disk.
+/// `(amp, was_recording)` per pixel column. Empty buckets between filled
+/// ones forward-fill from the previous value — each entry represents the
+/// span from its capture moment to the next entry's, so missing buckets
+/// inherit continuity rather than render as gaps.
 fn waveform_amps(
-    history: &VecDeque<(f32, bool)>,
+    history: &VecDeque<LevelSample>,
     layout: &WaveformLayout,
 ) -> Vec<Option<(f32, bool)>> {
-    (0..layout.cols)
-        .map(|col| {
-            let (start, end) = layout.column_range(col)?;
-            let (amp, recorded) = history.range(start..end).fold(
-                (0.0f32, false),
-                |(amx, rec), &(a, r)| (amx.max(a), rec || r),
-            );
-            Some((amp, recorded))
-        })
-        .collect()
+    let mut buckets: Vec<Option<(f32, bool)>> = vec![None; layout.cols];
+    let mut last_off_left: Option<(f32, bool)> = None;
+
+    for entry in history {
+        match layout.sample_to_column(entry.sample) {
+            Some(col) => {
+                let (amp, recorded) = buckets[col].unwrap_or((0.0, false));
+                buckets[col] = Some((amp.max(entry.peak), recorded || entry.recorded));
+            }
+            None if entry.sample < layout.leftmost_sample => {
+                last_off_left = Some((entry.peak, entry.recorded));
+            }
+            None => {}
+        }
+    }
+
+    // Stop the fill at the rightmost in-window entry so we don't leak
+    // the last observation across columns that represent the "future"
+    // beyond what's been captured yet.
+    let Some(last_filled) = buckets.iter().rposition(|b| b.is_some()) else {
+        return buckets;
+    };
+    let mut prev = last_off_left;
+    for bucket in &mut buckets[..=last_filled] {
+        match bucket {
+            Some(v) => prev = Some(*v),
+            None => *bucket = prev,
+        }
+    }
+    buckets
 }

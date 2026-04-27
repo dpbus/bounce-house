@@ -28,7 +28,6 @@ impl Recording {
         total_channel_count: u16,
         armed: Vec<ArmedChannel>,
         start_sample: u64,
-        start_tick: u64,
     ) -> Self {
         let writer = DiskWriter::start(
             consumer,
@@ -48,17 +47,17 @@ impl Recording {
             timeline: Timeline::new(),
             writer: Some(writer),
         };
-        recording.mark(start_tick, start_sample);
+        recording.mark(start_sample);
         recording
     }
 
     /// Drop the writer (joins its thread, finalizes WAVs) and freeze the
     /// elapsed timer. Idempotent.
-    pub fn stop(&mut self, stop_tick: u64, abs_sample: u64) {
+    pub fn stop(&mut self, abs_sample: u64) {
         if self.writer.is_none() {
             return;
         }
-        self.mark(stop_tick, abs_sample);
+        self.mark(abs_sample);
         self.stopped_at = Some(Local::now());
         self.writer = None;
     }
@@ -71,11 +70,11 @@ impl Recording {
         self.writer.as_ref().map(|w| w.flushed_samples())
     }
 
-    /// Push a marker at the current absolute engine sample, converted to
+    /// Push a marker at the given absolute engine sample, stored
     /// recording-relative.
-    pub fn mark(&mut self, tick: u64, abs_sample: u64) {
+    pub fn mark(&mut self, abs_sample: u64) {
         let rel = abs_sample.saturating_sub(self.start_sample);
-        self.timeline.mark(tick, rel);
+        self.timeline.mark(rel);
     }
 
     /// Seconds since `started_at` — frozen at `stopped_at` once stopped.

@@ -1,9 +1,7 @@
 use std::path::PathBuf;
 
-/// `sample` is in samples since recording start (not engine start).
 #[derive(Clone, Copy, Debug)]
 pub struct Marker {
-    pub tick: u64,
     pub sample: u64,
 }
 
@@ -15,13 +13,10 @@ pub enum BounceStatus {
     Failed(String),
 }
 
-/// `start_sample`/`end_sample` are in samples since recording start.
 #[derive(Clone, Debug)]
 pub struct Take {
     pub id: u32,
     pub name: String,
-    pub start_tick: u64,
-    pub end_tick: u64,
     pub start_sample: u64,
     pub end_sample: u64,
     pub color_index: u8,
@@ -44,8 +39,8 @@ impl Timeline {
     pub fn markers(&self) -> &[Marker] { &self.markers }
     pub fn takes(&self) -> &[Take] { &self.takes }
 
-    pub fn mark(&mut self, tick: u64, sample: u64) {
-        self.markers.push(Marker { tick, sample });
+    pub fn mark(&mut self, sample: u64) {
+        self.markers.push(Marker { sample });
     }
 
     /// Whether the last marker exists and isn't part of any take. Shared
@@ -56,7 +51,7 @@ impl Timeline {
             return false;
         }
         let last = self.markers.last().unwrap();
-        !self.takes.iter().any(|t| t.start_tick == last.tick || t.end_tick == last.tick)
+        !self.takes.iter().any(|t| t.start_sample == last.sample || t.end_sample == last.sample)
     }
 
     pub fn delete_last_marker(&mut self) -> bool {
@@ -77,8 +72,6 @@ impl Timeline {
         let take = Take {
             id: self.next_take_id,
             name,
-            start_tick: second_last.tick,
-            end_tick: last.tick,
             start_sample: second_last.sample,
             end_sample: last.sample,
             color_index: self.next_color,
@@ -99,12 +92,12 @@ impl Timeline {
         }
     }
 
-    /// Color for a marker at `tick` — the bounding take's color if any.
+    /// Color for a marker at `sample` — the bounding take's color if any.
     /// Prefers the take that ends here over one that starts here.
-    pub fn marker_color_index(&self, tick: u64) -> Option<u8> {
+    pub fn marker_color_index(&self, sample: u64) -> Option<u8> {
         self.takes.iter()
-            .find(|t| t.end_tick == tick)
-            .or_else(|| self.takes.iter().find(|t| t.start_tick == tick))
+            .find(|t| t.end_sample == sample)
+            .or_else(|| self.takes.iter().find(|t| t.start_sample == sample))
             .map(|t| t.color_index)
     }
 }

@@ -30,9 +30,17 @@ pub struct App {
     pub bounce_pool: BouncePool,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
-    pub level_history: VecDeque<(f32, bool)>,
+    pub level_history: VecDeque<LevelSample>,
     pub total_ticks: u64,
     pub waveform_window_secs: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LevelSample {
+    /// Absolute engine sample at the moment the entry was captured.
+    pub sample: u64,
+    pub peak: f32,
+    pub recorded: bool,
 }
 
 pub enum AppState {
@@ -96,7 +104,8 @@ impl App {
             }
         }
 
-        let recording = self.is_recording();
+        let recorded = self.is_recording();
+        let sample = self.engine.sample_position();
         let mut combined_peak = 0.0f32;
         for (i, level) in self.engine.levels().iter().enumerate() {
             let peak = level.take_current();
@@ -106,7 +115,11 @@ impl App {
                 combined_peak = combined_peak.max(peak);
             }
         }
-        self.level_history.push_back((combined_peak, recording));
+        self.level_history.push_back(LevelSample {
+            sample,
+            peak: combined_peak,
+            recorded,
+        });
         while self.level_history.len() > MAX_HISTORY_ENTRIES {
             self.level_history.pop_front();
         }
@@ -147,7 +160,6 @@ impl App {
             self.engine.channel_count(),
             armed,
             self.sample_position(),
-            self.total_ticks,
         );
         self.recording = Some(recording);
         Ok(())
@@ -161,9 +173,8 @@ impl App {
         // the time it returns, no more samples will land in the rtrb.
         self.engine.stop_recording();
         let sample = self.sample_position();
-        let tick = self.total_ticks;
         if let Some(r) = &mut self.recording {
-            r.stop(tick, sample);
+            r.stop(sample);
         }
         self.state = AppState::Default;
     }
@@ -172,10 +183,9 @@ impl App {
         if !self.can_mark() {
             return;
         }
-        let tick = self.total_ticks;
         let sample = self.sample_position();
         if let Some(r) = &mut self.recording {
-            r.mark(tick, sample);
+            r.mark(sample);
         }
     }
 
@@ -183,10 +193,9 @@ impl App {
         if !self.can_mark() {
             return;
         }
-        let tick = self.total_ticks;
         let sample = self.sample_position();
         if let Some(r) = &mut self.recording {
-            r.mark(tick, sample);
+            r.mark(sample);
         }
         self.state = AppState::NamingTake {
             buf: String::new(),
@@ -310,17 +319,6 @@ impl App {
 
     pub fn sample_position(&self) -> u64 {
         self.engine.sample_position()
-    }
-
-    /// Cumulative average UI tick rate since engine start. Returns the
-    /// nominal `TICK_FPS` until the engine has produced at least one sample.
-    pub fn measured_tick_rate(&self) -> f32 {
-        let sample_pos = self.engine.sample_position();
-        if sample_pos == 0 {
-            return TICK_FPS as f32;
-        }
-        let elapsed_secs = sample_pos as f32 / self.engine.sample_rate().0 as f32;
-        self.total_ticks as f32 / elapsed_secs
     }
 
     /// Whether marker-list mutations (Space, T, Backspace) are allowed:
