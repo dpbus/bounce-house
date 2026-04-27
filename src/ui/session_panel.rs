@@ -18,7 +18,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     );
 
     let lines = vec![
-        labeled("Device:   ", app.engine.name().to_string()),
+        labeled("Device:   ", app.engine.device_name().to_string()),
         labeled(
             "Started:  ",
             app.session.started_at.format("%H:%M:%S").to_string(),

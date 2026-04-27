@@ -2,6 +2,15 @@ use std::sync::atomic::Ordering;
 
 use atomic_float::AtomicF32;
 
+pub const MAX_CHANNELS: usize = 128;
+
+#[derive(Clone, Copy)]
+pub struct LevelObservation {
+    pub sample: u64,
+    pub recorded: bool,
+    pub channel_peaks: [f32; MAX_CHANNELS],
+}
+
 /// Per-channel peak amplitude. Audio thread accumulates the absolute peak
 /// across every audio buffer (so peaks aren't missed when multiple buffers
 /// run between UI ticks); UI thread atomically reads-and-resets via

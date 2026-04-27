@@ -42,9 +42,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 fn outer_block(app: &App) -> Block<'static> {
     let (title, color) = if app.is_recording() {
-        (format!(" ● Recording — {} ", app.engine.name()), Color::Red)
+        (format!(" ● Recording — {} ", app.engine.device_name()), Color::Red)
     } else {
-        (format!(" {} ", app.engine.name()), Color::Cyan)
+        (format!(" {} ", app.engine.device_name()), Color::Cyan)
     };
     Block::default()
         .title(title)

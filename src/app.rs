@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use chrono::Local;
 
-use crate::audio::{ArmedChannel, Device, Engine};
+use crate::audio::{ArmedChannel, Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::recording::Recording;
 use crate::session::Session;
@@ -24,7 +24,8 @@ const MAX_HISTORY_ENTRIES: usize = MAX_HISTORY_SECS * TICK_FPS;
 
 pub struct App {
     pub session: Session,
-    pub engine: Engine,
+    pub engine: EngineHandle,
+    pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub recording: Option<Recording>,
     pub state: AppState,
     pub bounce_pool: BouncePool,
@@ -66,12 +67,13 @@ pub enum AppError {
 
 impl App {
     pub fn new(device: Device, raw_dir: PathBuf) -> Self {
-        let engine = Engine::start(device);
+        let (engine, levels_consumer) = EngineHandle::start(device);
         let n = engine.channel_count() as usize;
         let session = Session::new(engine.channel_count(), raw_dir);
         App {
             session,
             engine,
+            levels_consumer,
             recording: None,
             state: AppState::Default,
             bounce_pool: BouncePool::start(),

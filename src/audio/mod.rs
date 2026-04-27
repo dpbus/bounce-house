@@ -5,4 +5,5 @@ mod levels;
 
 pub use device::Device;
 pub use disk_writer::{ArmedChannel, DiskWriter};
-pub use engine::Engine;
+pub use engine::EngineHandle;
+pub use levels::LevelObservation;
