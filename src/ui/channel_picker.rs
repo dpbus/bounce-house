@@ -14,7 +14,6 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     let area = centered_rect(frame.area(), 80, 30);
 
-    // Clear what was underneath, draw the modal block.
     frame.render_widget(Clear, area);
     let block = Block::default()
         .title(" Channels ")
@@ -26,8 +25,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),       // channel list
-            Constraint::Length(1),    // footer
+            Constraint::Min(3),    // channel list
+            Constraint::Length(1), // footer
         ])
         .split(inner);
 
@@ -93,7 +92,9 @@ fn footer_line(renaming: &Option<String>) -> Line<'static> {
             Span::raw(buf.clone()),
             Span::styled(
                 "_",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::SLOW_BLINK),
             ),
             Span::raw("    "),
             Span::styled("[Enter]", Style::default().fg(Color::Cyan)),

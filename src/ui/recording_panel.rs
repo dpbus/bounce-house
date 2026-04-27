@@ -26,7 +26,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let elapsed = recording.elapsed_secs();
     let (glyph, style) = if app.is_recording() {
-        ("●", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+        (
+            "●",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )
     } else {
         ("■", Style::default().fg(Color::DarkGray))
     };
@@ -48,10 +51,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),  // timer + folder
-            Constraint::Length(1),  // blank
-            Constraint::Length(1),  // "Takes"
-            Constraint::Fill(1),    // entries area
+            Constraint::Length(1), // timer + folder
+            Constraint::Length(1), // blank
+            Constraint::Length(1), // "Takes"
+            Constraint::Fill(1),   // entries area
         ])
         .split(inner);
 
@@ -103,7 +106,9 @@ fn take_entries(app: &App) -> Vec<Line<'static>> {
             Span::raw(buf.to_string()),
             Span::styled(
                 "_",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::SLOW_BLINK),
             ),
         ]));
     }
@@ -131,9 +136,10 @@ fn take_entries(app: &App) -> Vec<Line<'static>> {
 fn bounce_status_span(status: &BounceStatus, total_ticks: u64) -> Span<'static> {
     match status {
         BounceStatus::Pending => Span::styled("◌", Style::default().fg(Color::DarkGray)),
-        BounceStatus::Bouncing => {
-            Span::styled(spinner_glyph(total_ticks), Style::default().fg(Color::White))
-        }
+        BounceStatus::Bouncing => Span::styled(
+            spinner_glyph(total_ticks),
+            Style::default().fg(Color::White),
+        ),
         BounceStatus::Done(_) => Span::styled("✓", Style::default().fg(Color::Green)),
         BounceStatus::Failed(_) => Span::styled("✗", Style::default().fg(Color::Red)),
     }

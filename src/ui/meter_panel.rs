@@ -33,7 +33,6 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-/// Pick a sensible meter width given how wide each strip is.
 fn compute_meter_width(strip_width: u16) -> usize {
     match strip_width {
         0..=5 => 1,
@@ -45,19 +44,13 @@ fn compute_meter_width(strip_width: u16) -> usize {
     }
 }
 
-fn channel_strip(
-    frame: &mut Frame,
-    area: Rect,
-    channel: &Channel,
-    app: &App,
-    meter_width: usize,
-) {
+fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App, meter_width: usize) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Fill(1),     // meter fills available height
-            Constraint::Length(1),   // channel number
-            Constraint::Length(1),   // label
+            Constraint::Fill(1),   // meter fills available height
+            Constraint::Length(1), // channel number
+            Constraint::Length(1), // label
         ])
         .split(area);
 

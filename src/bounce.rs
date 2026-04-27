@@ -25,8 +25,8 @@ pub struct BounceJob {
     pub sample_rate: SampleRate,
     pub output_dir: PathBuf,
     pub channel_files: Vec<PathBuf>,
-    /// `None` when the recording has already stopped — the file is finalized
-    /// and immediately readable. `Some` while live — bouncer waits on it.
+    /// `None` if the recording has already stopped (file is finalized,
+    /// immediately readable). `Some` while live; bouncer waits on it.
     pub flushed_samples: Option<Arc<AtomicU64>>,
 }
 
@@ -82,7 +82,9 @@ fn worker_loop(jobs: Receiver<BounceJob>, updates: Sender<BounceUpdate>) {
 }
 
 fn wait_until_durable(job: &BounceJob) {
-    let Some(flushed) = &job.flushed_samples else { return };
+    let Some(flushed) = &job.flushed_samples else {
+        return;
+    };
     while flushed.load(Ordering::Acquire) < job.take.end_sample {
         thread::sleep(Duration::from_millis(50));
     }
@@ -122,8 +124,8 @@ fn open_channel_readers(
 ) -> Result<Vec<ChannelReader>, String> {
     let mut readers = Vec::with_capacity(paths.len());
     for path in paths {
-        let mut reader = WavReader::open(path)
-            .map_err(|e| format!("open {}: {}", path.display(), e))?;
+        let mut reader =
+            WavReader::open(path).map_err(|e| format!("open {}: {}", path.display(), e))?;
         reader
             .seek(start_sample as u32)
             .map_err(|e| format!("seek {}: {}", path.display(), e))?;
@@ -206,7 +208,13 @@ fn encode_chunk(
     mp3_out.clear();
     mp3_out.reserve(max_required_buffer_size(mono.len()));
     encoder
-        .encode_to_vec(DualPcm { left: mono, right: mono }, mp3_out)
+        .encode_to_vec(
+            DualPcm {
+                left: mono,
+                right: mono,
+            },
+            mp3_out,
+        )
         .map_err(|e| format!("encode: {:?}", e))?;
     out_file
         .write_all(mp3_out)

@@ -12,8 +12,8 @@ use crate::units::{ChannelIndex, SampleRate};
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 
-/// One armed channel — its position in the device's interleaved frame and
-/// its user-supplied label, used for the per-channel filename.
+/// One armed channel: position in the interleaved frame plus user label
+/// for the filename.
 pub struct ArmedChannel {
     pub index: ChannelIndex,
     pub label: Option<String>,
@@ -27,11 +27,10 @@ pub struct DiskWriter {
 }
 
 impl DiskWriter {
-    /// `output_dir` will hold one WAV per armed channel. RIFF's u32 size
-    /// field caps each file at ~4 GB → ~5h 47m at 48 kHz mono float32.
-    /// Past that point the writer will fail; not currently guarded.
-    /// `total_channel_count` is the device's full channel count, needed to
-    /// demultiplex the interleaved rtrb stream.
+    /// One WAV per armed channel in `output_dir`. RIFF's u32 size field
+    /// caps each file at ~4 GB (~5h 47m at 48 kHz mono float32); past that
+    /// the writer will fail — not currently guarded. `total_channel_count`
+    /// is needed to demultiplex the interleaved rtrb stream.
     pub fn start(
         consumer: rtrb::Consumer<f32>,
         output_dir: PathBuf,
@@ -39,8 +38,7 @@ impl DiskWriter {
         total_channel_count: u16,
         armed: Vec<ArmedChannel>,
     ) -> Self {
-        std::fs::create_dir_all(&output_dir)
-            .expect("Failed to create recording directory");
+        std::fs::create_dir_all(&output_dir).expect("Failed to create recording directory");
 
         let channel_files: Vec<PathBuf> = armed
             .iter()
@@ -157,10 +155,7 @@ fn flush_and_publish(
     flushed_samples.store(samples_written, Ordering::Release);
 }
 
-fn open_writers(
-    channel_files: &[PathBuf],
-    spec: WavSpec,
-) -> Vec<WavWriter<BufWriter<File>>> {
+fn open_writers(channel_files: &[PathBuf], spec: WavSpec) -> Vec<WavWriter<BufWriter<File>>> {
     channel_files
         .iter()
         .map(|path| WavWriter::create(path, spec).expect("Failed to create WAV file"))

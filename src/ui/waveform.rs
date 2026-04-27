@@ -66,7 +66,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         .unwrap_or_default();
     let (warn, clip) = band_thresholds();
     let (warn, clip) = (warn as f64, clip as f64);
-    // 1 braille pixel of vertical extent — keeps the centerline visible
+    // 1 braille pixel of vertical extent so the centerline stays visible
     // through silent recorded moments.
     let min_y = 1.0 / (height as f64 * 4.0);
 
@@ -87,23 +87,43 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
                 let g_top = half.min(warn);
                 ctx.draw(&CanvasLine {
-                    x1: x, y1: -g_top, x2: x, y2: g_top, color: green,
+                    x1: x,
+                    y1: -g_top,
+                    x2: x,
+                    y2: g_top,
+                    color: green,
                 });
                 if half > warn {
                     let y_top = half.min(clip);
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: warn, x2: x, y2: y_top, color: yellow,
+                        x1: x,
+                        y1: warn,
+                        x2: x,
+                        y2: y_top,
+                        color: yellow,
                     });
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: -y_top, x2: x, y2: -warn, color: yellow,
+                        x1: x,
+                        y1: -y_top,
+                        x2: x,
+                        y2: -warn,
+                        color: yellow,
                     });
                 }
                 if half > clip {
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: clip, x2: x, y2: half, color: red,
+                        x1: x,
+                        y1: clip,
+                        x2: x,
+                        y2: half,
+                        color: red,
                     });
                     ctx.draw(&CanvasLine {
-                        x1: x, y1: -half, x2: x, y2: -clip, color: red,
+                        x1: x,
+                        y1: -half,
+                        x2: x,
+                        y2: -clip,
+                        color: red,
                     });
                 }
             }
@@ -111,8 +131,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(canvas, canvas_area);
 
     // For close marker clusters (within 1 canvas_col), prefer take-bound
-    // markers over unbound ones; otherwise keep the latest. Snap-invariant
-    // — relative canvas_col deltas are preserved across grid shifts.
+    // markers over unbound ones; otherwise keep the latest. Snap-invariant:
+    // relative canvas_col deltas are preserved across grid shifts.
     let mut kept: Vec<(Option<u8>, usize)> = Vec::new();
     let consider = |kept: &mut Vec<(Option<u8>, usize)>, m: (Option<u8>, usize)| {
         if !kept.iter().any(|k| k.1.abs_diff(m.1) <= 1) {
@@ -163,7 +183,11 @@ impl WaveformLayout {
         let samples_per_col = (visible_samples / cols as u64).max(1);
         let snap_down = (current_sample / samples_per_col) * samples_per_col;
         let leftmost_sample = snap_down.saturating_sub(samples_per_col * (cols as u64 - 1));
-        Self { cols, leftmost_sample, samples_per_col }
+        Self {
+            cols,
+            leftmost_sample,
+            samples_per_col,
+        }
     }
 
     fn sample_to_column(&self, sample: u64) -> Option<usize> {
@@ -179,9 +203,9 @@ impl WaveformLayout {
 }
 
 /// `(amp, was_recording)` per pixel column. Empty buckets between filled
-/// ones forward-fill from the previous value — each entry represents the
+/// ones forward-fill from the previous value: each entry represents the
 /// span from its capture moment to the next entry's, so missing buckets
-/// inherit continuity rather than render as gaps.
+/// inherit continuity rather than rendering as gaps.
 fn waveform_amps(
     history: &VecDeque<LevelSample>,
     layout: &WaveformLayout,

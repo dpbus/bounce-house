@@ -127,7 +127,9 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             Tab => KeyAction::PickerStartRename,
             _ => KeyAction::None,
         },
-        AppState::PickingChannel { renaming: Some(_), .. } => match key.code {
+        AppState::PickingChannel {
+            renaming: Some(_), ..
+        } => match key.code {
             Esc => KeyAction::PickerCancelRename,
             Enter => KeyAction::PickerCommitRename,
             Backspace => KeyAction::PickerBackspace,
@@ -208,7 +210,13 @@ fn apply(app: &mut App, action: KeyAction) {
         }
         KeyAction::PickerCommitRename => {
             let (idx, label) = match (&app.state, picker_cursor_index(app)) {
-                (AppState::PickingChannel { renaming: Some(buf), .. }, Some(idx)) => {
+                (
+                    AppState::PickingChannel {
+                        renaming: Some(buf),
+                        ..
+                    },
+                    Some(idx),
+                ) => {
                     let label = if buf.trim().is_empty() {
                         None
                     } else {
@@ -226,12 +234,20 @@ fn apply(app: &mut App, action: KeyAction) {
             }
         }
         KeyAction::PickerAppendChar(c) => {
-            if let AppState::PickingChannel { renaming: Some(buf), .. } = &mut app.state {
+            if let AppState::PickingChannel {
+                renaming: Some(buf),
+                ..
+            } = &mut app.state
+            {
                 buf.push(c);
             }
         }
         KeyAction::PickerBackspace => {
-            if let AppState::PickingChannel { renaming: Some(buf), .. } = &mut app.state {
+            if let AppState::PickingChannel {
+                renaming: Some(buf),
+                ..
+            } = &mut app.state
+            {
                 buf.pop();
             }
         }

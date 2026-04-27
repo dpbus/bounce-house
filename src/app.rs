@@ -13,13 +13,10 @@ use crate::units::ChannelIndex;
 const FAST_DECAY: f32 = 0.976;
 const SLOW_DECAY: f32 = 0.990;
 
-/// Available waveform window sizes in seconds. Cycled through with the W key.
 pub const WAVEFORM_WINDOWS_SECS: &[u64] = &[10, 30, 60, 300, 1800];
 
 const MAX_HISTORY_SECS: usize = 1800;
-/// Initial capacity hint for level_history. Sized for ~100Hz observation
-/// rate × MAX_HISTORY_SECS. Runtime growth is bounded by sample-threshold
-/// eviction, not by this hint.
+/// Initial allocation only. Runtime growth is bounded by sample-threshold eviction.
 const LEVEL_HISTORY_CAPACITY_HINT: usize = MAX_HISTORY_SECS * 100;
 
 pub struct App {
@@ -46,9 +43,15 @@ pub struct LevelSample {
 
 pub enum AppState {
     Default,
-    NamingTake { buf: String, origin: TakeOrigin },
+    NamingTake {
+        buf: String,
+        origin: TakeOrigin,
+    },
     ConfirmingStop,
-    PickingChannel { cursor: usize, renaming: Option<String> },
+    PickingChannel {
+        cursor: usize,
+        renaming: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -112,9 +115,7 @@ impl App {
         }
     }
 
-    /// Pull every available observation off the audio thread, feeding
-    /// both the meter strips (per-channel max + decay) and the waveform
-    /// history (combined armed-channel peak per observation).
+    /// Drains observations into both meter decay state and waveform history.
     fn drain_level_observations(&mut self) {
         let n_channels = self.session.channels.len();
         let mut tick_max = vec![0.0f32; n_channels];
@@ -144,7 +145,11 @@ impl App {
             .engine
             .sample_position()
             .saturating_sub(MAX_HISTORY_SECS as u64 * sample_rate);
-        while self.level_history.front().is_some_and(|e| e.sample < cutoff) {
+        while self
+            .level_history
+            .front()
+            .is_some_and(|e| e.sample < cutoff)
+        {
             self.level_history.pop_front();
         }
     }
@@ -193,8 +198,8 @@ impl App {
         if !self.is_recording() {
             return;
         }
-        // Detach producer from audio thread first; this is synchronous so by
-        // the time it returns, no more samples will land in the rtrb.
+        // Detach producer first: engine.stop_recording is synchronous, so no
+        // further samples land in the rtrb after it returns.
         self.engine.stop_recording();
         let sample = self.sample_position();
         if let Some(r) = &mut self.recording {
@@ -231,7 +236,10 @@ impl App {
         if !matches!(self.state, AppState::Default) {
             return;
         }
-        if !self.current_timeline().is_some_and(|t| t.last_marker_unbound()) {
+        if !self
+            .current_timeline()
+            .is_some_and(|t| t.last_marker_unbound())
+        {
             return;
         }
         self.state = AppState::NamingTake {
@@ -262,7 +270,9 @@ impl App {
     }
 
     pub fn cancel_take_naming(&mut self) {
-        let AppState::NamingTake { origin, .. } = self.state else { return; };
+        let AppState::NamingTake { origin, .. } = self.state else {
+            return;
+        };
         if matches!(origin, TakeOrigin::Fresh) {
             if let Some(t) = self.current_timeline_mut() {
                 t.delete_last_marker();
@@ -272,7 +282,9 @@ impl App {
     }
 
     pub fn commit_take_naming(&mut self) {
-        let AppState::NamingTake { buf, .. } = &self.state else { return; };
+        let AppState::NamingTake { buf, .. } = &self.state else {
+            return;
+        };
         let trimmed = buf.trim().to_string();
         if trimmed.is_empty() {
             self.cancel_take_naming();
@@ -316,7 +328,10 @@ impl App {
 
     pub fn open_picker(&mut self) {
         if !self.is_recording() && matches!(self.state, AppState::Default) {
-            self.state = AppState::PickingChannel { cursor: 0, renaming: None };
+            self.state = AppState::PickingChannel {
+                cursor: 0,
+                renaming: None,
+            };
         }
     }
 

@@ -77,7 +77,7 @@ impl Recording {
         self.timeline.mark(rel);
     }
 
-    /// Seconds since `started_at` — frozen at `stopped_at` once stopped.
+    /// Seconds since `started_at`; frozen at `stopped_at` once stopped.
     pub fn elapsed_secs(&self) -> u64 {
         let end = self.stopped_at.unwrap_or_else(Local::now);
         (end - self.started_at).num_seconds().max(0) as u64

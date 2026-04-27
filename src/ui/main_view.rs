@@ -17,13 +17,13 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(TOP_BAR_HEIGHT),  // session + recording panels
+            Constraint::Length(TOP_BAR_HEIGHT), // session + recording panels
             Constraint::Length(GAP),
             Constraint::Length(WAVEFORM_HEIGHT), // waveform panel
             Constraint::Length(GAP),
-            Constraint::Fill(1),                  // meter strips fill remaining space
+            Constraint::Fill(1), // meter strips fill remaining space
             Constraint::Length(GAP),
-            Constraint::Length(1),                // footer (key hints)
+            Constraint::Length(1), // footer (key hints)
         ])
         .split(inner);
 
@@ -42,7 +42,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 fn outer_block(app: &App) -> Block<'static> {
     let (title, color) = if app.is_recording() {
-        (format!(" ● Recording — {} ", app.engine.device_name()), Color::Red)
+        (
+            format!(" ● Recording — {} ", app.engine.device_name()),
+            Color::Red,
+        )
     } else {
         (format!(" {} ", app.engine.device_name()), Color::Cyan)
     };
@@ -59,13 +62,17 @@ fn footer_line(app: &App) -> Line<'static> {
         AppState::NamingTake { .. } => {
             return Line::from(Span::styled(
                 "Naming take",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ));
         }
         AppState::ConfirmingStop => {
             spans.push(Span::styled(
                 "Stop recording?  ",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ));
             spans.extend(key_hint("Esc", "yes  ", Color::Cyan));
             spans.extend(key_hint("any other key", "no", Color::DarkGray));
@@ -74,10 +81,17 @@ fn footer_line(app: &App) -> Line<'static> {
             spans.extend(key_hint("Esc", "close picker", Color::Cyan));
         }
         AppState::Default if app.is_recording() => {
-            let last_unbound = app.current_timeline().is_some_and(|t| t.last_marker_unbound());
+            let last_unbound = app
+                .current_timeline()
+                .is_some_and(|t| t.last_marker_unbound());
             spans.extend(key_hint("T", "take  ", Color::Cyan));
             spans.extend(key_hint("Space", "mark  ", Color::Cyan));
-            spans.extend(key_hint_when(last_unbound, "Backspace", "unmark  ", Color::Cyan));
+            spans.extend(key_hint_when(
+                last_unbound,
+                "Backspace",
+                "unmark  ",
+                Color::Cyan,
+            ));
             spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
             spans.extend(key_hint("Esc", "stop", Color::DarkGray));
         }

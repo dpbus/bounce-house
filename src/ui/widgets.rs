@@ -13,8 +13,8 @@ pub const BAND_GREEN: Color = Color::Rgb(0, 255, 0);
 pub const BAND_YELLOW: Color = Color::Rgb(255, 255, 0);
 pub const BAND_RED: Color = Color::Rgb(255, 0, 0);
 
-/// Dim variants — used by the waveform for live (non-recorded) audio so the
-/// recorded portion stands out at full brightness.
+/// Dim variants for non-recorded audio in the waveform; recorded portions
+/// use the bright variants.
 pub const BAND_GREEN_DIM: Color = Color::Rgb(0, 80, 0);
 pub const BAND_YELLOW_DIM: Color = Color::Rgb(80, 80, 0);
 pub const BAND_RED_DIM: Color = Color::Rgb(80, 0, 0);
@@ -32,8 +32,7 @@ pub fn take_color(idx: usize) -> Color {
     TAKE_COLORS[idx % TAKE_COLORS.len()]
 }
 
-/// Braille spinner frame for the given tick. Cycles at ~10fps when fed
-/// a 60fps tick counter.
+/// Braille spinner frame for the given tick. Advances every 6 ticks.
 pub fn spinner_glyph(tick: u64) -> &'static str {
     const FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     FRAMES[(tick / 6) as usize % FRAMES.len()]
@@ -42,11 +41,7 @@ pub fn spinner_glyph(tick: u64) -> &'static str {
 const SILENCE_LEVEL: f32 = 0.0001;
 const SILENCE_DB: f32 = -80.0;
 
-pub fn horizontal_meter(
-    level: f32,
-    peak_hold: Option<f32>,
-    width: usize,
-) -> Vec<Span<'static>> {
+pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec<Span<'static>> {
     const PARTIAL_GLYPHS: [&str; 7] = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 
     let (full_cells, partial) = db_to_fill(to_db(level), width);
@@ -70,10 +65,7 @@ pub fn horizontal_meter(
         ));
     }
     if red > 0 {
-        spans.push(Span::styled(
-            "█".repeat(red),
-            Style::default().fg(BAND_RED),
-        ));
+        spans.push(Span::styled("█".repeat(red), Style::default().fg(BAND_RED)));
     }
 
     let mut cells_used = full_cells;
@@ -175,9 +167,8 @@ fn position_color(pos: usize, warn_pos: usize, clip_pos: usize) -> Color {
     }
 }
 
-/// (warn_frac, clip_frac) — the dB-fraction boundaries between the green,
-/// yellow, and red bands. Single source of truth for both meters and the
-/// waveform; changing WARN_DB/CLIP_DB updates everywhere via this.
+/// (warn_frac, clip_frac): the dB-fraction boundaries between green,
+/// yellow, and red bands. Single source of truth for meters and waveform.
 pub fn band_thresholds() -> (f32, f32) {
     (db_to_fraction(WARN_DB), db_to_fraction(CLIP_DB))
 }
@@ -213,13 +204,17 @@ fn db_to_position(db: f32, length: usize) -> usize {
         .min(length as f32) as usize
 }
 
-/// Splits a dB level into (full_cells, partial) for a meter of `total_cells` cells.
-/// 8 sub cells per cell
+/// Splits a dB level into (full_cells, partial) for a `total_cells`-wide
+/// meter. Partial is the 0-7 sub-cell remainder for the next block glyph.
 fn db_to_fill(db: f32, total_cells: usize) -> (usize, usize) {
     let total_subs = total_cells * 8;
     let fill_subs = (db_to_fraction(db) * total_subs as f32) as usize;
     let full = (fill_subs / 8).min(total_cells);
-    let partial = if full == total_cells { 0 } else { fill_subs % 8 };
+    let partial = if full == total_cells {
+        0
+    } else {
+        fill_subs % 8
+    };
     (full, partial)
 }
 
@@ -271,7 +266,7 @@ pub fn panel(
     inner
 }
 
-/// `Label: Value` — label dimmed, value at default style.
+/// `Label: Value` line — label dimmed, value default.
 pub fn labeled(label: &'static str, value: String) -> Line<'static> {
     Line::from(vec![
         Span::styled(label, Style::default().fg(Color::DarkGray)),
@@ -287,9 +282,9 @@ pub fn dim_status(text: &'static str) -> Vec<Line<'static>> {
     ))]
 }
 
-/// Renders `lines` flowing across `n_cols` equal columns of `area`,
-/// newspaper-style — column 1 fills top-to-bottom first, then column 2,
-/// etc. Overflow past the last column is dropped off the bottom.
+/// Renders `lines` newspaper-style across `n_cols` equal columns of
+/// `area`: column 1 fills top-to-bottom, then column 2, and so on.
+/// Overflow past the last column is dropped off the bottom.
 pub fn flow_columns(frame: &mut Frame, area: Rect, lines: &[Line<'static>], n_cols: u32) {
     if n_cols == 0 || area.width == 0 || area.height == 0 {
         return;
@@ -301,7 +296,8 @@ pub fn flow_columns(frame: &mut Frame, area: Rect, lines: &[Line<'static>], n_co
         .split(area);
     let per_col = area.height as usize;
     for (i, col_area) in cols.iter().enumerate() {
-        let chunk: Vec<Line> = lines.iter()
+        let chunk: Vec<Line> = lines
+            .iter()
             .skip(i * per_col)
             .take(per_col)
             .cloned()
