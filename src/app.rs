@@ -32,16 +32,35 @@ pub struct App {
     pub level_history: VecDeque<LevelSample>,
     pub total_ticks: u64,
     pub waveform_window_secs: u64,
-    last_template_save: Option<TemplateSave>,
+    last_template_save: Option<Flash<String>>,
+    last_template_load: Option<Flash<String>>,
 }
 
+/// Rails-style "flash": pairs a value with the moment it was set, so
+/// callers can render time-windowed UI status (e.g. "saved 'foo'" for
+/// a few seconds after a save). Read access goes through `fresh_within`,
+/// which gates on a caller-supplied window.
 #[derive(Clone)]
-pub struct TemplateSave {
-    pub name: String,
-    pub at: DateTime<Local>,
+pub struct Flash<T> {
+    value: T,
+    at: DateTime<Local>,
 }
 
-const TEMPLATE_SAVE_FEEDBACK_SECS: i64 = 3;
+impl<T> Flash<T> {
+    pub fn now(value: T) -> Self {
+        Self {
+            value,
+            at: Local::now(),
+        }
+    }
+
+    /// Returns the wrapped value if it was set within the last `secs` seconds.
+    pub fn fresh_within(&self, secs: i64) -> Option<&T> {
+        (Local::now() - self.at < Duration::seconds(secs)).then_some(&self.value)
+    }
+}
+
+const TEMPLATE_FEEDBACK_SECS: i64 = 3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct LevelSample {
@@ -100,15 +119,26 @@ impl App {
             total_ticks: 0,
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
             last_template_save: None,
+            last_template_load: None,
         }
     }
 
-    /// Returns the most recent template save if its feedback window is still
-    /// active. Used by the UI to show a transient "saved" confirmation.
-    pub fn recent_template_save(&self) -> Option<&TemplateSave> {
+    /// Name of the most recently saved template, while its feedback window
+    /// is still open. UI uses this for the transient "saved" confirmation.
+    pub fn recent_template_save(&self) -> Option<&str> {
         self.last_template_save
             .as_ref()
-            .filter(|s| Local::now() - s.at < Duration::seconds(TEMPLATE_SAVE_FEEDBACK_SECS))
+            .and_then(|t| t.fresh_within(TEMPLATE_FEEDBACK_SECS))
+            .map(String::as_str)
+    }
+
+    /// Name of the most recently loaded template, while its feedback window
+    /// is still open. UI uses this for the transient "loaded" confirmation.
+    pub fn recent_template_load(&self) -> Option<&str> {
+        self.last_template_load
+            .as_ref()
+            .and_then(|t| t.fresh_within(TEMPLATE_FEEDBACK_SECS))
+            .map(String::as_str)
     }
 
     pub fn is_recording(&self) -> bool {
@@ -379,10 +409,7 @@ impl App {
             channels: self.session.channels.clone(),
         };
         if template.save(&path).is_ok() {
-            self.last_template_save = Some(TemplateSave {
-                name: name.to_string(),
-                at: Local::now(),
-            });
+            self.last_template_save = Some(Flash::now(name.to_string()));
         }
         self.state = AppState::Default;
     }
@@ -397,6 +424,20 @@ impl App {
         if let AppState::SavingTemplate { buf } = &mut self.state {
             buf.pop();
         }
+    }
+
+    /// Applies `template` to the session and flashes a "loaded"
+    /// confirmation. Out-of-range template indices are silently dropped;
+    /// channels on the device not covered by the template keep their
+    /// fresh defaults.
+    pub fn load_template(&mut self, name: &str, template: &Template) {
+        for tmpl_channel in &template.channels {
+            if let Some(channel) = self.session.channel_mut(tmpl_channel.index) {
+                channel.label = tmpl_channel.label.clone();
+                channel.armed = tmpl_channel.armed;
+            }
+        }
+        self.last_template_load = Some(Flash::now(name.to_string()));
     }
 
     pub fn open_picker(&mut self) {

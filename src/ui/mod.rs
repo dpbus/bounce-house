@@ -20,13 +20,14 @@ use ratatui::prelude::*;
 
 use crate::app::{App, AppState};
 use crate::config::Config;
+use crate::template::Template;
 
-pub fn run() -> io::Result<()> {
+pub fn run(config: Config, template: Option<(String, Template)>) -> io::Result<()> {
     terminal::enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let result = bootstrap(&mut terminal);
+    let result = bootstrap(&mut terminal, config, template);
 
     terminal::disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen)?;
@@ -34,16 +35,21 @@ pub fn run() -> io::Result<()> {
     result
 }
 
-fn bootstrap(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+fn bootstrap(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    config: Config,
+    template: Option<(String, Template)>,
+) -> io::Result<()> {
     let device = match device_picker::pick(terminal) {
         Ok(d) => d,
         Err(e) if e.kind() == io::ErrorKind::Interrupted => return Ok(()),
         Err(e) => return Err(e),
     };
 
-    let config = Config::load_or_create()?;
-
     let mut app = App::new(device, config);
+    if let Some((name, t)) = template {
+        app.load_template(&name, &t);
+    }
     main_loop(terminal, &mut app)
 }
 

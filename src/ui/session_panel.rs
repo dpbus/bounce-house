@@ -46,19 +46,26 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn save_template_action_hint(app: &App) -> Line<'static> {
-    if let Some(save) = app.recent_template_save() {
-        return Line::from(vec![
-            Span::styled(" ✓ ", Style::default().fg(Color::Green)),
-            Span::styled(
-                format!("saved '{}' ", save.name),
-                Style::default().fg(Color::Green),
-            ),
-        ])
-        .right_aligned();
+    if let Some(name) = app.recent_template_save() {
+        return flash_line("saved", name);
+    }
+    if let Some(name) = app.recent_template_load() {
+        return flash_line("loaded", name);
     }
     Line::from(vec![
         Span::styled("[Ctrl+S]", Style::default().fg(Color::Cyan)),
         Span::raw(" save template "),
+    ])
+    .right_aligned()
+}
+
+fn flash_line(verb: &str, name: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(" ✓ ", Style::default().fg(Color::Green)),
+        Span::styled(
+            format!("{} '{}' ", verb, name),
+            Style::default().fg(Color::Green),
+        ),
     ])
     .right_aligned()
 }
