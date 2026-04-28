@@ -4,14 +4,14 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::App;
 use crate::ui::view::View;
-use crate::ui::widgets::{labeled, panel};
+use crate::ui::widgets::{key_hint_when, labeled, panel};
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let inner = panel(
         frame,
         area,
         "Session",
-        Some(save_template_action_hint(view)),
+        Some(template_action_hint(app, view)),
         None,
     );
 
@@ -49,18 +49,28 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn save_template_action_hint(view: &View) -> Line<'static> {
+fn template_action_hint(app: &App, view: &View) -> Line<'static> {
     if let Some(name) = view.recent_template_save() {
         return flash_line("saved", name);
     }
     if let Some(name) = view.recent_template_load() {
         return flash_line("loaded", name);
     }
-    Line::from(vec![
-        Span::styled("[Ctrl+S]", Style::default().fg(Color::Cyan)),
-        Span::raw(" save template "),
-    ])
-    .right_aligned()
+    let actionable = !app.is_recording();
+    let mut spans = Vec::new();
+    spans.extend(key_hint_when(
+        actionable,
+        "Ctrl+S",
+        "save template  ",
+        Color::Cyan,
+    ));
+    spans.extend(key_hint_when(
+        actionable,
+        "Ctrl+O",
+        "load template ",
+        Color::Cyan,
+    ));
+    Line::from(spans).right_aligned()
 }
 
 fn flash_line(verb: &str, name: &str) -> Line<'static> {
