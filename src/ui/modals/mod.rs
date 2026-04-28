@@ -1,4 +1,5 @@
 mod channel_picker;
+mod load_template;
 mod save_template;
 
 use crossterm::event::KeyEvent;
@@ -8,6 +9,7 @@ use crate::app::App;
 use crate::ui::view::View;
 
 pub use channel_picker::ChannelPickerModal;
+pub use load_template::LoadTemplateModal;
 pub use save_template::SaveTemplateModal;
 
 /// One of the modal overlays the user can open. View holds at most one
@@ -15,6 +17,7 @@ pub use save_template::SaveTemplateModal;
 /// cursors, lists — so AppState stays focused on domain state.
 pub enum ActiveModal {
     SaveTemplate(SaveTemplateModal),
+    LoadTemplate(LoadTemplateModal),
     ChannelPicker(ChannelPickerModal),
 }
 
@@ -31,6 +34,7 @@ impl ActiveModal {
     pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> Action {
         match self {
             ActiveModal::SaveTemplate(m) => m.handle_key(key, app, view),
+            ActiveModal::LoadTemplate(m) => m.handle_key(key, app, view),
             ActiveModal::ChannelPicker(m) => m.handle_key(key, app, view),
         }
     }
@@ -38,6 +42,7 @@ impl ActiveModal {
     pub fn draw(&self, frame: &mut Frame, app: &App) {
         match self {
             ActiveModal::SaveTemplate(m) => m.draw(frame, app),
+            ActiveModal::LoadTemplate(m) => m.draw(frame, app),
             ActiveModal::ChannelPicker(m) => m.draw(frame, app),
         }
     }

@@ -336,6 +336,13 @@ impl App {
         template.save(&path)
     }
 
+    /// Returns every template currently on disk in `templates_dir`,
+    /// sorted by name. Files that fail to deserialize are silently
+    /// skipped. Errors reading the directory yield an empty list.
+    pub fn list_templates(&self) -> Vec<Template> {
+        template::list(&self.config.templates_dir).unwrap_or_default()
+    }
+
     /// Applies `template` to the session. Out-of-range template indices
     /// are silently dropped; channels on the device not covered by the
     /// template keep their fresh defaults.

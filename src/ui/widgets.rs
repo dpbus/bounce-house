@@ -1,6 +1,8 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
+use crate::channel::Channel;
+
 const MIN_DB: f32 = -45.0;
 const MAX_DB: f32 = 6.0;
 
@@ -275,6 +277,27 @@ pub fn labeled(label: &'static str, value: String) -> Line<'static> {
     Line::from(vec![
         Span::styled(label, Style::default().fg(Color::DarkGray)),
         Span::raw(value),
+    ])
+}
+
+/// Read-only row for displaying a channel in template previews. Armed
+/// channels show a red filled circle; unarmed channels render dim with
+/// an empty circle. (The interactive picker has its own row variant.)
+pub fn channel_preview_row(channel: &Channel) -> Line<'static> {
+    let (marker, marker_style, row_style) = if channel.armed {
+        ("●", Style::default().fg(Color::Red), Style::default())
+    } else {
+        (
+            "○",
+            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::DarkGray),
+        )
+    };
+    let label = channel.label.clone().unwrap_or_else(|| "—".to_string());
+    Line::from(vec![
+        Span::styled(format!(" {} ", marker), marker_style),
+        Span::styled(format!("Ch {:>2}  ", channel.index), row_style),
+        Span::styled(label, row_style),
     ])
 }
 

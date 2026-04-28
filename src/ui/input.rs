@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, AppState};
-use crate::ui::modals::{ActiveModal, ChannelPickerModal, SaveTemplateModal};
+use crate::ui::modals::{ActiveModal, ChannelPickerModal, LoadTemplateModal, SaveTemplateModal};
 use crate::ui::view::View;
 
 pub enum Outcome {
@@ -39,6 +39,7 @@ enum KeyAction {
     TakeNameAppendChar(char),
     TakeNameBackspace,
     OpenSaveTemplate,
+    OpenLoadTemplate,
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
@@ -67,6 +68,9 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
         AppState::Default => match key.code {
             Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 KeyAction::OpenSaveTemplate
+            }
+            Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                KeyAction::OpenLoadTemplate
             }
             Char('q') | Char('Q') | Esc => KeyAction::Quit,
             Char('r') | Char('R') => KeyAction::StartRecording,
@@ -103,6 +107,11 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
         }
         KeyAction::OpenSaveTemplate => {
             view.open_modal(ActiveModal::SaveTemplate(SaveTemplateModal::new()));
+        }
+        KeyAction::OpenLoadTemplate => {
+            view.open_modal(ActiveModal::LoadTemplate(LoadTemplateModal::new(
+                app.list_templates(),
+            )));
         }
     }
 }

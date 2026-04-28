@@ -3,11 +3,12 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use crate::app::App;
-use crate::channel::Channel;
 use crate::template;
 use crate::ui::modals::Action;
 use crate::ui::view::View;
-use crate::ui::widgets::{MODAL_BORDER_OVERHEAD, flow_columns, key_hint, labeled, modal};
+use crate::ui::widgets::{
+    MODAL_BORDER_OVERHEAD, channel_preview_row, flow_columns, key_hint, labeled, modal,
+};
 
 const COL_WIDTH: u16 = 18;
 const MAX_COLS: u16 = 4;
@@ -131,25 +132,11 @@ fn header_lines(app: &App) -> Vec<Line<'static>> {
 }
 
 fn channel_lines(app: &App) -> Vec<Line<'static>> {
-    app.session.channels.iter().map(channel_row).collect()
-}
-
-fn channel_row(channel: &Channel) -> Line<'static> {
-    let (marker, marker_style, row_style) = if channel.armed {
-        ("●", Style::default().fg(Color::Red), Style::default())
-    } else {
-        (
-            "○",
-            Style::default().fg(Color::DarkGray),
-            Style::default().fg(Color::DarkGray),
-        )
-    };
-    let label = channel.label.clone().unwrap_or_else(|| "—".to_string());
-    Line::from(vec![
-        Span::styled(format!(" {} ", marker), marker_style),
-        Span::styled(format!("Ch {:>2}  ", channel.index), row_style),
-        Span::styled(label, row_style),
-    ])
+    app.session
+        .channels
+        .iter()
+        .map(channel_preview_row)
+        .collect()
 }
 
 fn save_as_line(buf: &str) -> Line<'static> {
