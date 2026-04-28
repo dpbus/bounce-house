@@ -6,25 +6,17 @@ use crate::app::App;
 use crate::template;
 use crate::ui::modals::Action;
 use crate::ui::view::View;
-use crate::ui::widgets::{
-    MODAL_BORDER_OVERHEAD, channel_preview_row, flow_columns, key_hint, labeled, modal,
-};
+use crate::ui::widgets::{channel_preview_row, flow_columns, key_hint, labeled, modal};
 
-const COL_WIDTH: u16 = 18;
+const COL_WIDTH: u16 = 20;
 const MAX_COLS: u16 = 4;
-const MAX_HEIGHT_PCT: u16 = 90;
-
-const MIN_MODAL_WIDTH: u16 = 60;
-const MIN_MODAL_HEIGHT: u16 = 18;
-const MIN_CONTENT_WIDTH: u16 = MIN_MODAL_WIDTH - MODAL_BORDER_OVERHEAD;
-const MIN_CONTENT_HEIGHT: u16 = MIN_MODAL_HEIGHT - MODAL_BORDER_OVERHEAD;
-
 const HEADER_ROWS: u16 = 2;
-const GAP_ROW: u16 = 1;
 const INPUT_ROW: u16 = 1;
 const HINTS_ROW: u16 = 1;
-const NUM_GAPS: u16 = 3;
+const GAP_ROW: u16 = 1;
+const NUM_GAPS: u16 = 3; // before grid, after grid, after input
 const INNER_MARGIN: u16 = 2;
+const MIN_CONTENT_WIDTH: u16 = 50;
 
 const CONTENT_CHROME_ROWS: u16 =
     HEADER_ROWS + INPUT_ROW + HINTS_ROW + (GAP_ROW * NUM_GAPS) + INNER_MARGIN;
@@ -71,7 +63,7 @@ impl SaveTemplateModal {
 
     pub fn draw(&self, frame: &mut Frame, app: &App) {
         let n_channels = app.session.channels.len() as u16;
-        let layout = pick_layout(n_channels, frame.area());
+        let layout = pick_layout(n_channels);
         let inner = modal(frame, "Save Template", layout.width, layout.height);
 
         let chunks = Layout::default()
@@ -89,37 +81,35 @@ impl SaveTemplateModal {
             .split(inner);
 
         frame.render_widget(Paragraph::new(header_lines(app)), chunks[0]);
-        let channels = channel_lines(app);
+        let channels: Vec<Line<'static>> = app
+            .session
+            .channels
+            .iter()
+            .map(channel_preview_row)
+            .collect();
         flow_columns(frame, chunks[2], &channels, layout.cols as u32);
         frame.render_widget(Paragraph::new(save_as_line(&self.buf)), chunks[4]);
         frame.render_widget(Paragraph::new(hints_line()).centered(), chunks[6]);
     }
 }
 
-fn pick_layout(n_channels: u16, frame_area: Rect) -> ContentLayout {
-    let max_modal_height = (frame_area.height * MAX_HEIGHT_PCT / 100)
-        .max(CONTENT_CHROME_ROWS + MODAL_BORDER_OVERHEAD + 1);
-    let max_content_height = max_modal_height - MODAL_BORDER_OVERHEAD;
-    let max_cols = (frame_area.width / COL_WIDTH).clamp(1, MAX_COLS);
-
-    let cols = (1..=max_cols)
-        .find(|&cols| {
-            let rows = n_channels.div_ceil(cols);
-            (CONTENT_CHROME_ROWS + rows).max(MIN_CONTENT_HEIGHT) <= max_content_height
-        })
-        .unwrap_or(max_cols);
-
-    let rows = n_channels.div_ceil(cols);
-    let height = (CONTENT_CHROME_ROWS + rows).clamp(MIN_CONTENT_HEIGHT, max_content_height);
+/// Picks the layout that fits all channels: more columns for higher counts,
+/// capped at MAX_COLS. Width clamped to MIN_CONTENT_WIDTH so the header
+/// and hints lines don't get squeezed at low channel counts.
+fn pick_layout(n_channels: u16) -> ContentLayout {
+    let cols = match n_channels {
+        0..=8 => 1,
+        9..=20 => 2,
+        21..=40 => 3,
+        _ => MAX_COLS,
+    };
+    let rows = n_channels.div_ceil(cols).max(1);
+    let raw_width = cols * COL_WIDTH + cols.saturating_sub(1) + INNER_MARGIN;
     ContentLayout {
         cols,
-        width: content_width(cols),
-        height,
+        width: raw_width.max(MIN_CONTENT_WIDTH),
+        height: CONTENT_CHROME_ROWS + rows,
     }
-}
-
-fn content_width(cols: u16) -> u16 {
-    (cols * COL_WIDTH + cols.saturating_sub(1) + INNER_MARGIN).max(MIN_CONTENT_WIDTH)
 }
 
 fn header_lines(app: &App) -> Vec<Line<'static>> {
@@ -129,14 +119,6 @@ fn header_lines(app: &App) -> Vec<Line<'static>> {
         labeled("Device:    ", app.engine.device_name().to_string()),
         labeled("Channels:  ", format!("{} armed / {}", armed, total)),
     ]
-}
-
-fn channel_lines(app: &App) -> Vec<Line<'static>> {
-    app.session
-        .channels
-        .iter()
-        .map(channel_preview_row)
-        .collect()
 }
 
 fn save_as_line(buf: &str) -> Line<'static> {
