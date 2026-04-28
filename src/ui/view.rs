@@ -133,6 +133,10 @@ impl View {
         footer::draw(frame, chunks[6], app, self);
 
         if let Some(modal) = &self.active_modal {
+            // Dim the back layer for visual hierarchy. Each modal's
+            // `Clear` resets cell modifiers in its own rect, so the
+            // modal itself stays bright after drawing.
+            dim_buffer(frame);
             modal.draw(frame, app);
         }
     }
@@ -163,6 +167,16 @@ impl View {
             return input::Outcome::Continue;
         }
         input::handle(key, app, self)
+    }
+}
+
+fn dim_buffer(frame: &mut Frame) {
+    let buffer = frame.buffer_mut();
+    let area = buffer.area;
+    for y in area.y..area.bottom() {
+        for x in area.x..area.right() {
+            buffer[(x, y)].modifier.insert(Modifier::DIM);
+        }
     }
 }
 
