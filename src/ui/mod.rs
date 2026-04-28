@@ -1,4 +1,3 @@
-mod channel_picker;
 mod device_picker;
 mod footer;
 mod input;
@@ -17,7 +16,7 @@ use crossterm::{
 };
 use ratatui::prelude::*;
 
-use crate::app::{App, AppState};
+use crate::app::App;
 use crate::config::Config;
 use crate::template::Template;
 use crate::ui::view::View;
@@ -64,12 +63,7 @@ fn main_loop(
     loop {
         app.tick_display();
 
-        terminal.draw(|frame| {
-            view.draw(frame, app);
-            if matches!(app.state, AppState::PickingChannel { .. }) {
-                channel_picker::draw(frame, app);
-            }
-        })?;
+        terminal.draw(|frame| view.draw(frame, app))?;
 
         if event::poll(Duration::from_millis(16))?
             && let Event::Key(key) = event::read()?

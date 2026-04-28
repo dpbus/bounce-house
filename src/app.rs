@@ -45,15 +45,8 @@ pub struct LevelSample {
 
 pub enum AppState {
     Default,
-    NamingTake {
-        buf: String,
-        origin: TakeOrigin,
-    },
+    NamingTake { buf: String, origin: TakeOrigin },
     ConfirmingStop,
-    PickingChannel {
-        cursor: usize,
-        renaming: Option<String>,
-    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -352,21 +345,6 @@ impl App {
                 channel.label = tmpl_channel.label.clone();
                 channel.armed = tmpl_channel.armed;
             }
-        }
-    }
-
-    pub fn open_picker(&mut self) {
-        if !self.is_recording() && matches!(self.state, AppState::Default) {
-            self.state = AppState::PickingChannel {
-                cursor: 0,
-                renaming: None,
-            };
-        }
-    }
-
-    pub fn close_picker(&mut self) {
-        if matches!(self.state, AppState::PickingChannel { .. }) {
-            self.state = AppState::Default;
         }
     }
 

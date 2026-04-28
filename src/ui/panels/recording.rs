@@ -9,10 +9,6 @@ use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, spinner_glyp
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let inner = panel(frame, area, "Recording", None, naming_hint(app));
 
-    if matches!(app.state, AppState::PickingChannel { .. }) {
-        frame.render_widget(Paragraph::new(dim_status("Channel picker open")), inner);
-        return;
-    }
     let Some(recording) = &app.recording else {
         frame.render_widget(Paragraph::new(dim_status("Idle")), inner);
         return;

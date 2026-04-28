@@ -29,9 +29,6 @@ fn line(app: &App) -> Line<'static> {
             spans.extend(key_hint("Esc", "yes  ", Color::Cyan));
             spans.extend(key_hint("any other key", "no", Color::DarkGray));
         }
-        AppState::PickingChannel { .. } => {
-            spans.extend(key_hint("Esc", "close picker", Color::Cyan));
-        }
         AppState::Default if app.is_recording() => {
             let last_unbound = app
                 .current_timeline()
