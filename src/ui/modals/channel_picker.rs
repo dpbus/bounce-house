@@ -9,7 +9,9 @@ use crate::channel::Channel;
 use crate::ui::Action;
 use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
-use crate::ui::widgets::{MODAL_BORDER_OVERHEAD, horizontal_meter, input_with_cursor, key_hint};
+use crate::ui::widgets::{
+    MODAL_BORDER_OVERHEAD, horizontal_meter, input_with_cursor, key_hint, truncate_with_ellipsis,
+};
 
 const METER_WIDTH: usize = 18;
 const LABEL_WIDTH: usize = 18;
@@ -248,7 +250,7 @@ fn channel_row(
         spans.push(Span::styled(
             format!(
                 "{:<width$}",
-                truncate(&label, LABEL_WIDTH),
+                truncate_with_ellipsis(&label, LABEL_WIDTH),
                 width = LABEL_WIDTH
             ),
             row_style,
@@ -267,10 +269,6 @@ fn db_label(level: f32) -> String {
     }
 }
 
-/// Truncates a string to `max` chars (not bytes); good enough for ASCII labels.
-fn truncate(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
-}
 
 fn footer_line(renaming: bool) -> Line<'static> {
     let mut spans = Vec::new();

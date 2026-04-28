@@ -8,12 +8,13 @@ use crate::ui::Action;
 use crate::ui::footer;
 use crate::ui::input;
 use crate::ui::modals::ActiveModal;
-use crate::ui::panels::{meters, recording, session, waveform};
+use crate::ui::panels::{meters, recording, session, timeline, waveform};
 use crate::ui::take_naming::TakeNaming;
 
 const TOP_BAR_HEIGHT: u16 = 12;
 const WAVEFORM_HEIGHT: u16 = 18;
 const GAP: u16 = 1;
+const TIMELINE_WIDTH: u16 = 32;
 const TEMPLATE_FEEDBACK_SECS: i64 = 3;
 
 /// The view layer's persistent state. App owns domain state; View owns
@@ -117,6 +118,27 @@ impl View {
         let inner = block.inner(frame.area());
         frame.render_widget(block, frame.area());
 
+        // Split inner vertically: body fills, footer is the bottom
+        // line spanning the entire width (incl. under the timeline).
+        let body_and_footer = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(GAP),
+                Constraint::Length(1),
+            ])
+            .split(inner);
+        let body = body_and_footer[0];
+        let footer_area = body_and_footer[2];
+
+        // Body splits horizontally: main area on the left, timeline
+        // panel pinned to the right edge.
+        let h_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Fill(1), Constraint::Length(TIMELINE_WIDTH)])
+            .split(body);
+        let main = h_chunks[0];
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -125,10 +147,8 @@ impl View {
                 Constraint::Length(WAVEFORM_HEIGHT),
                 Constraint::Length(GAP),
                 Constraint::Fill(1),
-                Constraint::Length(GAP),
-                Constraint::Length(1),
             ])
-            .split(inner);
+            .split(main);
 
         let top_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -137,10 +157,11 @@ impl View {
             .split(chunks[0]);
 
         session::draw(frame, top_chunks[0], app, self);
-        recording::draw(frame, top_chunks[1], app, self);
+        recording::draw(frame, top_chunks[1], app);
         waveform::draw(frame, chunks[2], app);
         meters::draw(frame, chunks[4], app);
-        footer::draw(frame, chunks[6], app, self);
+        timeline::draw(frame, h_chunks[1], app, self);
+        footer::draw(frame, footer_area, app, self);
 
         if let Some(modal) = &self.active_modal {
             // Dim the back layer for visual hierarchy. Each modal's

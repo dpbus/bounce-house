@@ -344,6 +344,14 @@ pub fn input_with_cursor(input: &TextInput, base: Style) -> Vec<Span<'static>> {
     spans
 }
 
+pub fn truncate_with_ellipsis(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", cut)
+}
+
 /// Single dim line used as a placeholder when a panel has nothing active.
 pub fn dim_status(text: &'static str) -> Vec<Line<'static>> {
     vec![Line::from(Span::styled(
