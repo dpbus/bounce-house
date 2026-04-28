@@ -1,18 +1,20 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, AppState};
+use crate::ui::modals::{ActiveModal, SaveTemplateModal};
+use crate::ui::view::View;
 
 pub enum Outcome {
     Continue,
     Quit,
 }
 
-pub fn handle(app: &mut App, key: KeyEvent) -> Outcome {
+pub fn handle(key: KeyEvent, app: &mut App, view: &mut View) -> Outcome {
     let action = decide(app, key);
     if matches!(action, KeyAction::Quit) {
         return Outcome::Quit;
     }
-    apply(app, action);
+    apply(app, view, action);
     Outcome::Continue
 }
 
@@ -45,11 +47,7 @@ enum KeyAction {
     PickerCommitRename,
     PickerAppendChar(char),
     PickerBackspace,
-    BeginSaveTemplate,
-    CancelSaveTemplate,
-    CommitSaveTemplate,
-    SaveTemplateAppendChar(char),
-    SaveTemplateBackspace,
+    OpenSaveTemplate,
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
@@ -60,13 +58,6 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             Enter => KeyAction::CommitTakeNaming,
             Backspace => KeyAction::TakeNameBackspace,
             Char(c) => KeyAction::TakeNameAppendChar(c),
-            _ => KeyAction::None,
-        },
-        AppState::SavingTemplate { .. } => match key.code {
-            Esc => KeyAction::CancelSaveTemplate,
-            Enter => KeyAction::CommitSaveTemplate,
-            Backspace => KeyAction::SaveTemplateBackspace,
-            Char(c) => KeyAction::SaveTemplateAppendChar(c),
             _ => KeyAction::None,
         },
         AppState::ConfirmingStop => match key.code {
@@ -101,7 +92,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
         },
         AppState::Default => match key.code {
             Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                KeyAction::BeginSaveTemplate
+                KeyAction::OpenSaveTemplate
             }
             Char('q') | Char('Q') | Esc => KeyAction::Quit,
             Char('r') | Char('R') => KeyAction::StartRecording,
@@ -113,7 +104,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
     }
 }
 
-fn apply(app: &mut App, action: KeyAction) {
+fn apply(app: &mut App, view: &mut View, action: KeyAction) {
     match action {
         KeyAction::None | KeyAction::Quit => {}
         KeyAction::StartRecording => {
@@ -207,11 +198,9 @@ fn apply(app: &mut App, action: KeyAction) {
                 buf.pop();
             }
         }
-        KeyAction::BeginSaveTemplate => app.begin_save_template(),
-        KeyAction::CancelSaveTemplate => app.cancel_save_template(),
-        KeyAction::CommitSaveTemplate => app.commit_save_template(),
-        KeyAction::SaveTemplateAppendChar(c) => app.save_template_append_char(c),
-        KeyAction::SaveTemplateBackspace => app.save_template_backspace(),
+        KeyAction::OpenSaveTemplate => {
+            view.open_modal(ActiveModal::SaveTemplate(SaveTemplateModal::new()));
+        }
     }
 }
 

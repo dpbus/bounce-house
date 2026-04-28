@@ -1,43 +1,136 @@
+use chrono::{DateTime, Duration, Local};
+use crossterm::event::KeyEvent;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding};
 
 use crate::app::App;
 use crate::ui::footer;
+use crate::ui::input;
+use crate::ui::modals::{self, ActiveModal};
 use crate::ui::panels::{meters, recording, session, waveform};
 
 const TOP_BAR_HEIGHT: u16 = 12;
 const WAVEFORM_HEIGHT: u16 = 18;
-const GAP: u16 = 1; // standard breathing room between sections
+const GAP: u16 = 1;
+const TEMPLATE_FEEDBACK_SECS: i64 = 3;
 
-pub fn draw(frame: &mut Frame, app: &App) {
-    let block = outer_block(app);
-    let inner = block.inner(frame.area());
-    frame.render_widget(block, frame.area());
+/// The view layer's persistent state. App owns domain state; View owns
+/// what the user sees and the modal lifecycle. Together they're passed
+/// to draw and key-handling functions.
+pub struct View {
+    active_modal: Option<ActiveModal>,
+    last_template_save: Option<Flash<String>>,
+    last_template_load: Option<Flash<String>>,
+}
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(TOP_BAR_HEIGHT), // session + recording panels
-            Constraint::Length(GAP),
-            Constraint::Length(WAVEFORM_HEIGHT), // waveform panel
-            Constraint::Length(GAP),
-            Constraint::Fill(1), // meter strips fill remaining space
-            Constraint::Length(GAP),
-            Constraint::Length(1), // footer (key hints)
-        ])
-        .split(inner);
+/// Rails-style "flash": pairs a value with the moment it was set, so
+/// the UI can render time-windowed status messages (e.g. "saved 'foo'"
+/// for a few seconds after a save).
+#[derive(Clone)]
+pub struct Flash<T> {
+    value: T,
+    at: DateTime<Local>,
+}
 
-    let top_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .spacing(2)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[0]);
+impl<T> Flash<T> {
+    pub fn now(value: T) -> Self {
+        Self {
+            value,
+            at: Local::now(),
+        }
+    }
 
-    session::draw(frame, top_chunks[0], app);
-    recording::draw(frame, top_chunks[1], app);
-    waveform::draw(frame, chunks[2], app);
-    meters::draw(frame, chunks[4], app);
-    footer::draw(frame, chunks[6], app);
+    /// Returns the wrapped value if it was set within the last `secs` seconds.
+    pub fn fresh_within(&self, secs: i64) -> Option<&T> {
+        (Local::now() - self.at < Duration::seconds(secs)).then_some(&self.value)
+    }
+}
+
+impl View {
+    pub fn new() -> Self {
+        Self {
+            active_modal: None,
+            last_template_save: None,
+            last_template_load: None,
+        }
+    }
+
+    pub fn open_modal(&mut self, modal: ActiveModal) {
+        self.active_modal = Some(modal);
+    }
+
+    pub fn flash_template_save(&mut self, name: String) {
+        self.last_template_save = Some(Flash::now(name));
+    }
+
+    pub fn flash_template_load(&mut self, name: String) {
+        self.last_template_load = Some(Flash::now(name));
+    }
+
+    pub fn recent_template_save(&self) -> Option<&str> {
+        self.last_template_save
+            .as_ref()
+            .and_then(|t| t.fresh_within(TEMPLATE_FEEDBACK_SECS))
+            .map(String::as_str)
+    }
+
+    pub fn recent_template_load(&self) -> Option<&str> {
+        self.last_template_load
+            .as_ref()
+            .and_then(|t| t.fresh_within(TEMPLATE_FEEDBACK_SECS))
+            .map(String::as_str)
+    }
+
+    pub fn draw(&self, frame: &mut Frame, app: &App) {
+        let block = outer_block(app);
+        let inner = block.inner(frame.area());
+        frame.render_widget(block, frame.area());
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(TOP_BAR_HEIGHT),
+                Constraint::Length(GAP),
+                Constraint::Length(WAVEFORM_HEIGHT),
+                Constraint::Length(GAP),
+                Constraint::Fill(1),
+                Constraint::Length(GAP),
+                Constraint::Length(1),
+            ])
+            .split(inner);
+
+        let top_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .spacing(2)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunks[0]);
+
+        session::draw(frame, top_chunks[0], app, self);
+        recording::draw(frame, top_chunks[1], app);
+        waveform::draw(frame, chunks[2], app);
+        meters::draw(frame, chunks[4], app);
+        footer::draw(frame, chunks[6], app);
+
+        if let Some(modal) = &self.active_modal {
+            modal.draw(frame, app);
+        }
+    }
+
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App) -> input::Outcome {
+        // Take the modal out of `self.active_modal` so we can pass `&mut self`
+        // (for view-level state like flashes) alongside the modal call. Without
+        // the take, the modal's borrow against `self.active_modal` would
+        // alias the `self` we need to forward.
+        if let Some(mut modal) = self.active_modal.take() {
+            let action = modal.handle_key(key, app, self);
+            match action {
+                modals::Action::Stay => self.active_modal = Some(modal),
+                modals::Action::Close => {} // modal dropped here
+            }
+            return input::Outcome::Continue;
+        }
+        input::handle(key, app, self)
+    }
 }
 
 fn outer_block(app: &App) -> Block<'static> {

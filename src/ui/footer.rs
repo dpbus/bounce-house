@@ -19,14 +19,6 @@ fn line(app: &App) -> Line<'static> {
                     .add_modifier(Modifier::BOLD),
             ));
         }
-        AppState::SavingTemplate { .. } => {
-            return Line::from(Span::styled(
-                "Saving template",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ));
-        }
         AppState::ConfirmingStop => {
             spans.push(Span::styled(
                 "Stop recording?  ",

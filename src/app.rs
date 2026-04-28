@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
+use std::io;
 
-use chrono::{DateTime, Duration, Local};
+use chrono::Local;
 
 use crate::audio::{ArmedChannel, Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
@@ -32,35 +33,7 @@ pub struct App {
     pub level_history: VecDeque<LevelSample>,
     pub total_ticks: u64,
     pub waveform_window_secs: u64,
-    last_template_save: Option<Flash<String>>,
-    last_template_load: Option<Flash<String>>,
 }
-
-/// Rails-style "flash": pairs a value with the moment it was set, so
-/// callers can render time-windowed UI status (e.g. "saved 'foo'" for
-/// a few seconds after a save). Read access goes through `fresh_within`,
-/// which gates on a caller-supplied window.
-#[derive(Clone)]
-pub struct Flash<T> {
-    value: T,
-    at: DateTime<Local>,
-}
-
-impl<T> Flash<T> {
-    pub fn now(value: T) -> Self {
-        Self {
-            value,
-            at: Local::now(),
-        }
-    }
-
-    /// Returns the wrapped value if it was set within the last `secs` seconds.
-    pub fn fresh_within(&self, secs: i64) -> Option<&T> {
-        (Local::now() - self.at < Duration::seconds(secs)).then_some(&self.value)
-    }
-}
-
-const TEMPLATE_FEEDBACK_SECS: i64 = 3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct LevelSample {
@@ -80,9 +53,6 @@ pub enum AppState {
     PickingChannel {
         cursor: usize,
         renaming: Option<String>,
-    },
-    SavingTemplate {
-        buf: String,
     },
 }
 
@@ -118,27 +88,7 @@ impl App {
             level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
             total_ticks: 0,
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
-            last_template_save: None,
-            last_template_load: None,
         }
-    }
-
-    /// Name of the most recently saved template, while its feedback window
-    /// is still open. UI uses this for the transient "saved" confirmation.
-    pub fn recent_template_save(&self) -> Option<&str> {
-        self.last_template_save
-            .as_ref()
-            .and_then(|t| t.fresh_within(TEMPLATE_FEEDBACK_SECS))
-            .map(String::as_str)
-    }
-
-    /// Name of the most recently loaded template, while its feedback window
-    /// is still open. UI uses this for the transient "loaded" confirmation.
-    pub fn recent_template_load(&self) -> Option<&str> {
-        self.last_template_load
-            .as_ref()
-            .and_then(|t| t.fresh_within(TEMPLATE_FEEDBACK_SECS))
-            .map(String::as_str)
     }
 
     pub fn is_recording(&self) -> bool {
@@ -380,55 +330,22 @@ impl App {
         }
     }
 
-    pub fn begin_save_template(&mut self) {
-        if self.is_recording() || !matches!(self.state, AppState::Default) {
-            return;
-        }
-        self.state = AppState::SavingTemplate { buf: String::new() };
-    }
-
-    pub fn cancel_save_template(&mut self) {
-        if matches!(self.state, AppState::SavingTemplate { .. }) {
-            self.state = AppState::Default;
-        }
-    }
-
-    pub fn commit_save_template(&mut self) {
-        let AppState::SavingTemplate { buf } = &self.state else {
-            return;
-        };
-        let name = buf.trim();
-        if !template::is_valid_name(name) {
-            return;
-        }
+    /// Saves the current channel state as a template under `name`.
+    /// Caller is responsible for validating the name and surfacing UI
+    /// feedback.
+    pub fn save_template(&mut self, name: &str) -> io::Result<()> {
         let path = template::path_for_name(&self.config.templates_dir, name);
         let template = Template {
             name: name.to_string(),
             device_name: self.engine.device_name().to_string(),
             channels: self.session.channels.clone(),
         };
-        if template.save(&path).is_ok() {
-            self.last_template_save = Some(Flash::now(template.name));
-        }
-        self.state = AppState::Default;
+        template.save(&path)
     }
 
-    pub fn save_template_append_char(&mut self, c: char) {
-        if let AppState::SavingTemplate { buf } = &mut self.state {
-            buf.push(c);
-        }
-    }
-
-    pub fn save_template_backspace(&mut self) {
-        if let AppState::SavingTemplate { buf } = &mut self.state {
-            buf.pop();
-        }
-    }
-
-    /// Applies `template` to the session and flashes a "loaded"
-    /// confirmation. Out-of-range template indices are silently dropped;
-    /// channels on the device not covered by the template keep their
-    /// fresh defaults.
+    /// Applies `template` to the session. Out-of-range template indices
+    /// are silently dropped; channels on the device not covered by the
+    /// template keep their fresh defaults.
     pub fn load_template(&mut self, template: &Template) {
         for tmpl_channel in &template.channels {
             if let Some(channel) = self.session.channel_mut(tmpl_channel.index) {
@@ -436,7 +353,6 @@ impl App {
                 channel.armed = tmpl_channel.armed;
             }
         }
-        self.last_template_load = Some(Flash::now(template.name.clone()));
     }
 
     pub fn open_picker(&mut self) {

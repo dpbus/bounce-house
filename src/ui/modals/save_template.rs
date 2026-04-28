@@ -1,31 +1,28 @@
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, AppState};
+use crate::app::App;
 use crate::channel::Channel;
+use crate::template;
+use crate::ui::modals::Action;
+use crate::ui::view::View;
 use crate::ui::widgets::{MODAL_BORDER_OVERHEAD, flow_columns, key_hint, labeled, modal};
 
 const COL_WIDTH: u16 = 18;
 const MAX_COLS: u16 = 4;
 const MAX_HEIGHT_PCT: u16 = 90;
 
-// Visual minimums expressed in modal-outer terms (border-inclusive).
-// Internal sizing works in content terms; derive content-side floors by
-// subtracting the chrome the modal helper adds.
 const MIN_MODAL_WIDTH: u16 = 60;
 const MIN_MODAL_HEIGHT: u16 = 18;
 const MIN_CONTENT_WIDTH: u16 = MIN_MODAL_WIDTH - MODAL_BORDER_OVERHEAD;
 const MIN_CONTENT_HEIGHT: u16 = MIN_MODAL_HEIGHT - MODAL_BORDER_OVERHEAD;
 
-// Content layout pieces — single source of truth for both the constraints
-// array below and CONTENT_CHROME_ROWS. Editing a row count here updates
-// the chrome calculation in lockstep.
 const HEADER_ROWS: u16 = 2;
 const GAP_ROW: u16 = 1;
 const INPUT_ROW: u16 = 1;
 const HINTS_ROW: u16 = 1;
-const NUM_GAPS: u16 = 3; // before list, after list, after input
-/// `.margin(1)` on the inner Layout adds 1 cell on each side, both axes.
+const NUM_GAPS: u16 = 3;
 const INNER_MARGIN: u16 = 2;
 
 const CONTENT_CHROME_ROWS: u16 =
@@ -37,39 +34,67 @@ struct ContentLayout {
     height: u16,
 }
 
-pub fn draw(frame: &mut Frame, app: &App) {
-    let AppState::SavingTemplate { buf } = &app.state else {
-        return;
-    };
-
-    let n_channels = app.session.channels.len() as u16;
-    let layout = pick_layout(n_channels, frame.area());
-    let inner = modal(frame, "Save Template", layout.width, layout.height);
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints([
-            Constraint::Length(HEADER_ROWS),
-            Constraint::Length(GAP_ROW),
-            Constraint::Min(1), // channel list fills remaining space
-            Constraint::Length(GAP_ROW),
-            Constraint::Length(INPUT_ROW),
-            Constraint::Length(GAP_ROW),
-            Constraint::Length(HINTS_ROW),
-        ])
-        .split(inner);
-
-    frame.render_widget(Paragraph::new(header_lines(app)), chunks[0]);
-    let channels = channel_lines(app);
-    flow_columns(frame, chunks[2], &channels, layout.cols as u32);
-    frame.render_widget(Paragraph::new(save_as_line(buf)), chunks[4]);
-    frame.render_widget(Paragraph::new(hints_line()).centered(), chunks[6]);
+pub struct SaveTemplateModal {
+    buf: String,
 }
 
-/// Picks the smallest column count that lets all channels fit in the
-/// terminal's vertical budget, then sizes the content area to match.
-/// Falls back to MAX_COLS with clipping if even that overflows.
+impl SaveTemplateModal {
+    pub fn new() -> Self {
+        Self { buf: String::new() }
+    }
+
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> Action {
+        match key.code {
+            KeyCode::Esc => Action::Close,
+            KeyCode::Enter => {
+                let name = self.buf.trim();
+                if !template::is_valid_name(name) {
+                    return Action::Stay;
+                }
+                if app.save_template(name).is_ok() {
+                    view.flash_template_save(name.to_string());
+                }
+                Action::Close
+            }
+            KeyCode::Backspace => {
+                self.buf.pop();
+                Action::Stay
+            }
+            KeyCode::Char(c) => {
+                self.buf.push(c);
+                Action::Stay
+            }
+            _ => Action::Stay,
+        }
+    }
+
+    pub fn draw(&self, frame: &mut Frame, app: &App) {
+        let n_channels = app.session.channels.len() as u16;
+        let layout = pick_layout(n_channels, frame.area());
+        let inner = modal(frame, "Save Template", layout.width, layout.height);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([
+                Constraint::Length(HEADER_ROWS),
+                Constraint::Length(GAP_ROW),
+                Constraint::Min(1),
+                Constraint::Length(GAP_ROW),
+                Constraint::Length(INPUT_ROW),
+                Constraint::Length(GAP_ROW),
+                Constraint::Length(HINTS_ROW),
+            ])
+            .split(inner);
+
+        frame.render_widget(Paragraph::new(header_lines(app)), chunks[0]);
+        let channels = channel_lines(app);
+        flow_columns(frame, chunks[2], &channels, layout.cols as u32);
+        frame.render_widget(Paragraph::new(save_as_line(&self.buf)), chunks[4]);
+        frame.render_widget(Paragraph::new(hints_line()).centered(), chunks[6]);
+    }
+}
+
 fn pick_layout(n_channels: u16, frame_area: Rect) -> ContentLayout {
     let max_modal_height = (frame_area.height * MAX_HEIGHT_PCT / 100)
         .max(CONTENT_CHROME_ROWS + MODAL_BORDER_OVERHEAD + 1);

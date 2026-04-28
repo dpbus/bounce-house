@@ -3,14 +3,15 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use crate::app::App;
+use crate::ui::view::View;
 use crate::ui::widgets::{labeled, panel};
 
-pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
+pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let inner = panel(
         frame,
         area,
         "Session",
-        Some(save_template_action_hint(app)),
+        Some(save_template_action_hint(view)),
         None,
     );
 
@@ -45,11 +46,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn save_template_action_hint(app: &App) -> Line<'static> {
-    if let Some(name) = app.recent_template_save() {
+fn save_template_action_hint(view: &View) -> Line<'static> {
+    if let Some(name) = view.recent_template_save() {
         return flash_line("saved", name);
     }
-    if let Some(name) = app.recent_template_load() {
+    if let Some(name) = view.recent_template_load() {
         return flash_line("loaded", name);
     }
     Line::from(vec![

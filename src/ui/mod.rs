@@ -2,8 +2,8 @@ mod channel_picker;
 mod device_picker;
 mod footer;
 mod input;
+mod modals;
 mod panels;
-mod template_save;
 mod view;
 mod widgets;
 
@@ -20,6 +20,7 @@ use ratatui::prelude::*;
 use crate::app::{App, AppState};
 use crate::config::Config;
 use crate::template::Template;
+use crate::ui::view::View;
 
 pub fn run(config: Config, template: Option<Template>) -> io::Result<()> {
     terminal::enable_raw_mode()?;
@@ -46,32 +47,33 @@ fn bootstrap(
     };
 
     let mut app = App::new(device, config);
+    let mut view = View::new();
     if let Some(t) = template {
+        let name = t.name.clone();
         app.load_template(&t);
+        view.flash_template_load(name);
     }
-    main_loop(terminal, &mut app)
+    main_loop(terminal, &mut app, &mut view)
 }
 
 fn main_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
+    view: &mut View,
 ) -> io::Result<()> {
     loop {
         app.tick_display();
 
         terminal.draw(|frame| {
-            view::draw(frame, app);
+            view.draw(frame, app);
             if matches!(app.state, AppState::PickingChannel { .. }) {
                 channel_picker::draw(frame, app);
-            }
-            if matches!(app.state, AppState::SavingTemplate { .. }) {
-                template_save::draw(frame, app);
             }
         })?;
 
         if event::poll(Duration::from_millis(16))?
             && let Event::Key(key) = event::read()?
-            && matches!(input::handle(app, key), input::Outcome::Quit)
+            && matches!(view.handle_key(key, app), input::Outcome::Quit)
         {
             break;
         }
