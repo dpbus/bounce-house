@@ -162,9 +162,15 @@ impl App {
         if self.is_recording() || !matches!(self.state, AppState::Default) {
             return Err(AppError::NotIdle);
         }
+        // Defensive: drop armed channels whose index is outside the engine's
+        // real channel count. Production sessions never produce out-of-range
+        // indices; the filter exists to keep DEBUG_CHANNELS-padded channels
+        // from reaching the disk writer (which sizes its frame to the engine).
+        let max_index = self.engine.channel_count();
         let armed: Vec<ArmedChannel> = self
             .session
             .armed()
+            .filter(|c| c.index < max_index)
             .map(|c| ArmedChannel {
                 index: c.index,
                 label: c.label.clone(),
