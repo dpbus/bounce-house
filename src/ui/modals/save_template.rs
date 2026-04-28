@@ -133,6 +133,6 @@ fn save_as_line(input: &TextInput) -> Line<'static> {
 fn hints_line() -> Line<'static> {
     let mut spans = Vec::new();
     spans.extend(key_hint("Enter", "save  ", Color::Cyan));
-    spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
+    spans.extend(key_hint("Esc", "cancel", Color::Cyan));
     Line::from(spans)
 }

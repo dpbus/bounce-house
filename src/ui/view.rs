@@ -23,6 +23,7 @@ pub struct View {
     active_modal: Option<ActiveModal>,
     take_naming: Option<TakeNaming>,
     confirm_stop: bool,
+    confirm_quit: bool,
     last_template_save: Option<Flash<String>>,
     last_template_load: Option<Flash<String>>,
 }
@@ -55,6 +56,7 @@ impl View {
             active_modal: None,
             take_naming: None,
             confirm_stop: false,
+            confirm_quit: false,
             last_template_save: None,
             last_template_load: None,
         }
@@ -78,6 +80,14 @@ impl View {
 
     pub fn confirm_stop_active(&self) -> bool {
         self.confirm_stop
+    }
+
+    pub fn open_confirm_quit(&mut self) {
+        self.confirm_quit = true;
+    }
+
+    pub fn confirm_quit_active(&self) -> bool {
+        self.confirm_quit
     }
 
     pub fn flash_template_save(&mut self, name: String) {
@@ -151,8 +161,21 @@ impl View {
         }
         if self.confirm_stop {
             self.confirm_stop = false;
-            if matches!(key.code, KeyCode::Esc) {
+            if matches!(
+                key.code,
+                KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y')
+            ) {
                 app.stop_recording();
+            }
+            return input::Outcome::Continue;
+        }
+        if self.confirm_quit {
+            self.confirm_quit = false;
+            if matches!(
+                key.code,
+                KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y')
+            ) {
+                return input::Outcome::Quit;
             }
             return input::Outcome::Continue;
         }

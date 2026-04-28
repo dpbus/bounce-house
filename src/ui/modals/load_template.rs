@@ -147,6 +147,6 @@ fn hints_line(empty: bool) -> Line<'static> {
     if !empty {
         spans.extend(key_hint("Enter", "load  ", Color::Cyan));
     }
-    spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
+    spans.extend(key_hint("Esc", "cancel", Color::Cyan));
     Line::from(spans)
 }

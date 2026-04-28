@@ -13,11 +13,7 @@ pub enum Outcome {
 }
 
 pub fn handle(key: KeyEvent, app: &mut App, view: &mut View) -> Outcome {
-    let action = decide(app, key);
-    if matches!(action, KeyAction::Quit) {
-        return Outcome::Quit;
-    }
-    apply(app, view, action);
+    apply(app, view, decide(app, key));
     Outcome::Continue
 }
 
@@ -26,9 +22,9 @@ pub fn handle(key: KeyEvent, app: &mut App, view: &mut View) -> Outcome {
 /// the mutable plumbing.
 enum KeyAction {
     None,
-    Quit,
     StartRecording,
     OpenConfirmStop,
+    OpenConfirmQuit,
     OpenChannelPicker,
     CycleWaveformWindow,
     DropMarker,
@@ -44,7 +40,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
     use KeyCode::*;
     if app.is_recording() {
         return match key.code {
-            Esc => KeyAction::OpenConfirmStop,
+            Esc | Char('r') | Char('R') => KeyAction::OpenConfirmStop,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
             Char(' ') => KeyAction::DropMarker,
             Char('t') | Char('T') => KeyAction::MarkAndOpenTakeNaming,
@@ -57,7 +53,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
         Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenSaveTemplate,
         Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenLoadTemplate,
         Char(',') => KeyAction::OpenSettings,
-        Char('q') | Char('Q') | Esc => KeyAction::Quit,
+        Char('q') | Char('Q') => KeyAction::OpenConfirmQuit,
         Char('r') | Char('R') => KeyAction::StartRecording,
         Char('c') | Char('C') => KeyAction::OpenChannelPicker,
         Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
@@ -68,11 +64,12 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
 
 fn apply(app: &mut App, view: &mut View, action: KeyAction) {
     match action {
-        KeyAction::None | KeyAction::Quit => {}
+        KeyAction::None => {}
         KeyAction::StartRecording => {
             let _ = app.start_recording();
         }
         KeyAction::OpenConfirmStop => view.open_confirm_stop(),
+        KeyAction::OpenConfirmQuit => view.open_confirm_quit(),
         KeyAction::CycleWaveformWindow => app.cycle_waveform_window(),
         KeyAction::DropMarker => app.drop_marker(),
         KeyAction::MarkAndOpenTakeNaming => {

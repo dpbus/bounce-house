@@ -5,8 +5,7 @@ use crate::app::App;
 use crate::ui::view::View;
 use crate::ui::widgets::{key_hint, key_hint_when};
 
-/// `[,] settings` — width budgeted on the right of the footer when the
-/// settings shortcut is live.
+/// `[,] settings` — width reserved on the right of the footer.
 const SETTINGS_HINT_WIDTH: u16 = 12;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
@@ -18,16 +17,23 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         ])
         .split(area);
     frame.render_widget(Paragraph::new(left(app, view)), chunks[0]);
-    if settings_available(app, view) {
-        frame.render_widget(
-            Paragraph::new(Line::from(key_hint(",", "settings", Color::DarkGray))).right_aligned(),
-            chunks[1],
-        );
-    }
+    let settings_spans = key_hint_when(
+        settings_available(app, view),
+        ",",
+        "settings",
+        Color::Cyan,
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(settings_spans)).right_aligned(),
+        chunks[1],
+    );
 }
 
 fn settings_available(app: &App, view: &View) -> bool {
-    !app.is_recording() && view.take_naming().is_none() && !view.confirm_stop_active()
+    !app.is_recording()
+        && view.take_naming().is_none()
+        && !view.confirm_stop_active()
+        && !view.confirm_quit_active()
 }
 
 fn left(app: &App, view: &View) -> Line<'static> {
@@ -46,7 +52,18 @@ fn left(app: &App, view: &View) -> Line<'static> {
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         )];
-        spans.extend(key_hint("Esc", "yes  ", Color::Cyan));
+        spans.extend(key_hint("Enter", "yes  ", Color::Cyan));
+        spans.extend(key_hint("any other key", "no", Color::DarkGray));
+        return Line::from(spans);
+    }
+    if view.confirm_quit_active() {
+        let mut spans = vec![Span::styled(
+            "Quit?  ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )];
+        spans.extend(key_hint("Enter", "yes  ", Color::Cyan));
         spans.extend(key_hint("any other key", "no", Color::DarkGray));
         return Line::from(spans);
     }
@@ -62,7 +79,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
             Color::Cyan,
         ));
         spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "stop", Color::DarkGray));
+        spans.extend(key_hint("Esc", "stop", Color::Cyan));
     } else {
         spans.extend(key_hint("R", "record  ", Color::Cyan));
         spans.extend(key_hint("C", "channels  ", Color::Cyan));
@@ -72,7 +89,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
             "name take  ",
             Color::Cyan,
         ));
-        spans.extend(key_hint("Q", "quit", Color::DarkGray));
+        spans.extend(key_hint("Q", "quit", Color::Cyan));
     }
     Line::from(spans)
 }

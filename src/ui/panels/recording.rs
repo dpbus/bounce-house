@@ -59,7 +59,7 @@ fn naming_hint(view: &View) -> Option<Line<'static>> {
     view.take_naming().is_some().then(|| {
         let mut spans = vec![Span::raw(" ")];
         spans.extend(key_hint("Enter", "save  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
+        spans.extend(key_hint("Esc", "cancel", Color::Cyan));
         spans.push(Span::raw(" "));
         Line::from(spans)
     })

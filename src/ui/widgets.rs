@@ -247,8 +247,13 @@ pub fn key_hint(key: &str, action: &str, key_color: Color) -> Vec<Span<'static>>
     ]
 }
 
-/// Same as `key_hint` but dims the whole thing when the action isn't
-/// currently available — preserves layout while signaling disabled state.
+/// Color for hints whose action isn't currently available — clearly
+/// dimmer than `DarkGray` so it doesn't read as just "secondary".
+pub const DISABLED_HINT: Color = Color::Rgb(70, 70, 70);
+
+/// Same as `key_hint` but renders the whole hint in `DISABLED_HINT`
+/// when the action isn't currently available — preserves layout while
+/// signaling unavailable.
 pub fn key_hint_when(
     enabled: bool,
     key: &str,
@@ -260,7 +265,7 @@ pub fn key_hint_when(
     } else {
         vec![Span::styled(
             format!("[{}] {}", key, action),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(DISABLED_HINT),
         )]
     }
 }

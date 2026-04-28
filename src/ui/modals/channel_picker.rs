@@ -48,7 +48,7 @@ impl ChannelPickerModal {
 
     fn handle_browse_key(&mut self, key: KeyEvent, app: &mut App) -> Action {
         match key.code {
-            KeyCode::Esc => Action::Close,
+            KeyCode::Esc | KeyCode::Char('c') | KeyCode::Char('C') => Action::Close,
             KeyCode::Up | KeyCode::Char('k') => {
                 self.cursor = self.cursor.saturating_sub(1);
                 Action::Stay
@@ -276,11 +276,11 @@ fn footer_line(renaming: bool) -> Line<'static> {
     let mut spans = Vec::new();
     if renaming {
         spans.extend(key_hint("Enter", "save  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
+        spans.extend(key_hint("Esc", "cancel", Color::Cyan));
     } else {
         spans.extend(key_hint("Space", "arm  ", Color::Cyan));
         spans.extend(key_hint("Tab", "rename  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "close", Color::DarkGray));
+        spans.extend(key_hint("Esc", "close", Color::Cyan));
     }
     Line::from(spans)
 }
