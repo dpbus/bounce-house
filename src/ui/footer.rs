@@ -81,7 +81,12 @@ fn left(app: &App, view: &View) -> Line<'static> {
         spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
         spans.extend(key_hint("Esc", "stop", Color::Cyan));
     } else {
-        spans.extend(key_hint("R", "record  ", Color::Cyan));
+        spans.extend(key_hint_when(
+            app.session.armed().next().is_some(),
+            "R",
+            "record  ",
+            Color::Cyan,
+        ));
         spans.extend(key_hint("C", "channels  ", Color::Cyan));
         spans.extend(key_hint_when(
             app.has_unbound_marker(),
