@@ -7,6 +7,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
+use ebur128::{EbuR128, Mode};
 use hound::WavReader;
 use mp3lame_encoder::{
     Bitrate, Builder, DualPcm, Encoder, FlushNoGap, Quality, max_required_buffer_size,
@@ -19,6 +20,13 @@ type ChannelReader = WavReader<BufReader<File>>;
 
 const CHUNK_SAMPLES: usize = 48_000;
 const FLUSH_TAIL_BYTES: usize = 7200;
+
+/// Streaming-era integrated loudness target. Spotify/YouTube ≈ -14, Apple ≈ -16.
+const TARGET_LUFS: f64 = -14.0;
+/// True-peak ceiling after gain — gain caps below this so we never clip.
+const MAX_TRUE_PEAK_DB: f64 = -1.0;
+/// Below this LUFS the take is effectively silent; skip normalization.
+const SILENCE_LUFS_FLOOR: f64 = -70.0;
 
 pub struct BounceJob {
     pub take: Take,
@@ -99,15 +107,82 @@ fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
     }
     let total = take_sample_count(&job.take)?;
 
+    let (lufs, true_peak) = analyze_loudness(job, total)?;
+    let gain = compute_normalization_gain(lufs, true_peak);
+
     let readers = open_channel_readers(&job.channel_files, job.take.start_sample)?;
     let mut encoder = build_encoder(job.sample_rate)?;
     let path = unique_mp3_path(&job.output_dir, &job.recording_timestamp, &job.take.name);
     let mut out_file =
         File::create(&path).map_err(|e| format!("create {}: {}", path.display(), e))?;
 
-    encode_to_file(readers, total, &mut encoder, &mut out_file)?;
+    encode_to_file(readers, total, gain, &mut encoder, &mut out_file)?;
 
     Ok(path)
+}
+
+/// First pass over the take: sums per-channel WAVs to mono and feeds
+/// the result to ebur128 as stereo (L=R), matching what the encode
+/// pass produces. Returns integrated LUFS and the max true-peak
+/// across L/R as a linear amplitude.
+fn analyze_loudness(job: &BounceJob, total: usize) -> Result<(f64, f64), String> {
+    let mut readers = open_channel_readers(&job.channel_files, job.take.start_sample)?;
+    let mut analyzer = EbuR128::new(2, job.sample_rate.0, Mode::I | Mode::TRUE_PEAK)
+        .map_err(|e| format!("ebur128 init: {:?}", e))?;
+
+    let scale = 1.0 / (readers.len() as f32).sqrt();
+    let mut mono = vec![0.0f32; CHUNK_SAMPLES];
+    let mut interleaved = vec![0.0f32; CHUNK_SAMPLES * 2];
+    let mut done = 0usize;
+    while done < total {
+        let chunk = (total - done).min(CHUNK_SAMPLES);
+        let n = mix_chunk_into(&mut readers, &mut mono[..chunk], scale);
+        if n == 0 {
+            break;
+        }
+        // The encoder writes stereo with L=R; mirror that here so the
+        // LUFS we measure matches the signal we're about to encode.
+        for (i, &s) in mono[..n].iter().enumerate() {
+            interleaved[i * 2] = s;
+            interleaved[i * 2 + 1] = s;
+        }
+        analyzer
+            .add_frames_f32(&interleaved[..n * 2])
+            .map_err(|e| format!("ebur128 add_frames: {:?}", e))?;
+        done += n;
+        if n < chunk {
+            break;
+        }
+    }
+
+    let lufs = analyzer
+        .loudness_global()
+        .map_err(|e| format!("ebur128 loudness_global: {:?}", e))?;
+    let tp_l = analyzer
+        .true_peak(0)
+        .map_err(|e| format!("ebur128 true_peak L: {:?}", e))?;
+    let tp_r = analyzer
+        .true_peak(1)
+        .map_err(|e| format!("ebur128 true_peak R: {:?}", e))?;
+    Ok((lufs, tp_l.max(tp_r)))
+}
+
+/// Linear gain factor that brings `lufs` toward `TARGET_LUFS` without
+/// pushing `true_peak` above `MAX_TRUE_PEAK_DB`. Returns 1.0 (pass-through)
+/// for silent or near-silent takes.
+fn compute_normalization_gain(lufs: f64, true_peak: f64) -> f32 {
+    if !lufs.is_finite() || lufs < SILENCE_LUFS_FLOOR {
+        return 1.0;
+    }
+    let ideal_db = TARGET_LUFS - lufs;
+    let peak_db = if true_peak > 0.0 {
+        20.0 * true_peak.log10()
+    } else {
+        f64::NEG_INFINITY
+    };
+    let max_safe_db = MAX_TRUE_PEAK_DB - peak_db;
+    let gain_db = ideal_db.min(max_safe_db);
+    10f32.powf(gain_db as f32 / 20.0)
 }
 
 fn take_sample_count(take: &Take) -> Result<usize, String> {
@@ -157,10 +232,11 @@ fn build_encoder(sample_rate: SampleRate) -> Result<Encoder, String> {
 fn encode_to_file(
     mut readers: Vec<ChannelReader>,
     total: usize,
+    gain: f32,
     encoder: &mut Encoder,
     out_file: &mut File,
 ) -> Result<(), String> {
-    let scale = 1.0 / (readers.len() as f32).sqrt();
+    let scale = (1.0 / (readers.len() as f32).sqrt()) * gain;
     let mut mono = vec![0.0f32; CHUNK_SAMPLES];
     let mut mp3_out: Vec<u8> = Vec::with_capacity(max_required_buffer_size(CHUNK_SAMPLES));
 
