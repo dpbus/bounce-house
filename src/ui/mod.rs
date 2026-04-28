@@ -1,8 +1,9 @@
 mod channel_picker;
 mod device_picker;
-mod main_view;
+mod footer;
 mod panels;
 mod template_save;
+mod view;
 mod widgets;
 
 use std::io::{self, stdout};
@@ -58,7 +59,7 @@ fn main_loop(
         app.tick_display();
 
         terminal.draw(|frame| {
-            main_view::draw(frame, app);
+            view::draw(frame, app);
             if matches!(app.state, AppState::PickingChannel { .. }) {
                 channel_picker::draw(frame, app);
             }
