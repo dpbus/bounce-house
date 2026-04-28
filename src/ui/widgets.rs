@@ -43,13 +43,17 @@ pub fn spinner_glyph(tick: u64) -> &'static str {
 const SILENCE_LEVEL: f32 = 0.0001;
 const SILENCE_DB: f32 = -80.0;
 
+/// Background tint for the meter "track" — empty cells use this bg
+/// instead of the previous `│...░...│` framing approach.
+const METER_TRACK_BG: Color = Color::Rgb(40, 40, 40);
+
 pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec<Span<'static>> {
     const PARTIAL_GLYPHS: [&str; 7] = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 
     let (full_cells, partial) = db_to_fill(to_db(level), width);
     let (warn_cells, clip_cells) = band_positions(width);
 
-    let mut spans = vec![Span::raw("│")];
+    let mut spans = Vec::new();
 
     let green = full_cells.min(warn_cells);
     let yellow = full_cells.min(clip_cells).saturating_sub(green);
@@ -57,17 +61,20 @@ pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec
     if green > 0 {
         spans.push(Span::styled(
             "█".repeat(green),
-            Style::default().fg(BAND_GREEN),
+            Style::default().fg(BAND_GREEN).bg(METER_TRACK_BG),
         ));
     }
     if yellow > 0 {
         spans.push(Span::styled(
             "█".repeat(yellow),
-            Style::default().fg(BAND_YELLOW),
+            Style::default().fg(BAND_YELLOW).bg(METER_TRACK_BG),
         ));
     }
     if red > 0 {
-        spans.push(Span::styled("█".repeat(red), Style::default().fg(BAND_RED)));
+        spans.push(Span::styled(
+            "█".repeat(red),
+            Style::default().fg(BAND_RED).bg(METER_TRACK_BG),
+        ));
     }
 
     let mut cells_used = full_cells;
@@ -75,7 +82,7 @@ pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec
         let color = position_color(full_cells, warn_cells, clip_cells);
         spans.push(Span::styled(
             PARTIAL_GLYPHS[partial - 1],
-            Style::default().fg(color),
+            Style::default().fg(color).bg(METER_TRACK_BG),
         ));
         cells_used += 1;
     }
@@ -88,16 +95,27 @@ pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec
         Some(pos) => {
             let space_before = pos - cells_used - 1;
             let space_after = width - pos;
-            spans.push(Span::raw(" ".repeat(space_before)));
-            spans.push(Span::styled("▌", Style::default().fg(Color::White)));
-            spans.push(Span::raw(" ".repeat(space_after)));
+            spans.push(Span::styled(
+                " ".repeat(space_before),
+                Style::default().bg(METER_TRACK_BG),
+            ));
+            spans.push(Span::styled(
+                "▌",
+                Style::default().fg(Color::White).bg(METER_TRACK_BG),
+            ));
+            spans.push(Span::styled(
+                " ".repeat(space_after),
+                Style::default().bg(METER_TRACK_BG),
+            ));
         }
         None => {
-            spans.push(Span::raw(" ".repeat(width.saturating_sub(cells_used))));
+            spans.push(Span::styled(
+                " ".repeat(width.saturating_sub(cells_used)),
+                Style::default().bg(METER_TRACK_BG),
+            ));
         }
     }
 
-    spans.push(Span::raw("│"));
     spans
 }
 
