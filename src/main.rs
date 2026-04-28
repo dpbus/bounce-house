@@ -3,6 +3,8 @@ mod audio;
 mod bounce;
 mod channel;
 mod config;
+#[cfg(debug_assertions)]
+mod debug;
 mod recording;
 mod session;
 mod template;
