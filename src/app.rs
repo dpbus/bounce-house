@@ -5,9 +5,9 @@ use chrono::Local;
 
 use crate::audio::{ArmedChannel, Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
-use crate::config::Config;
 use crate::recording::Recording;
 use crate::session::Session;
+use crate::settings::Settings;
 use crate::template::{self, Template};
 use crate::timeline::Timeline;
 
@@ -21,12 +21,11 @@ const MAX_HISTORY_SECS: usize = 1800;
 const LEVEL_HISTORY_CAPACITY_HINT: usize = MAX_HISTORY_SECS * 100;
 
 pub struct App {
-    pub config: Config,
+    pub settings: Settings,
     pub session: Session,
     pub engine: EngineHandle,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub recording: Option<Recording>,
-    pub state: AppState,
     pub bounce_pool: BouncePool,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
@@ -43,20 +42,6 @@ pub struct LevelSample {
     pub recorded: bool,
 }
 
-pub enum AppState {
-    Default,
-    NamingTake { buf: String, origin: TakeOrigin },
-    ConfirmingStop,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum TakeOrigin {
-    /// T placed a marker; cancel rolls it back.
-    Fresh,
-    /// N targets an existing marker; cancel just closes.
-    Retroactive,
-}
-
 #[derive(Debug)]
 pub enum AppError {
     NothingArmed,
@@ -64,17 +49,16 @@ pub enum AppError {
 }
 
 impl App {
-    pub fn new(device: Device, config: Config) -> Self {
+    pub fn new(device: Device, settings: Settings) -> Self {
         let (engine, levels_consumer) = EngineHandle::start(device);
         let n = engine.channel_count() as usize;
         let session = Session::new(engine.channel_count());
         App {
-            config,
+            settings,
             session,
             engine,
             levels_consumer,
             recording: None,
-            state: AppState::Default,
             bounce_pool: BouncePool::start(),
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
@@ -159,7 +143,7 @@ impl App {
     }
 
     pub fn start_recording(&mut self) -> Result<(), AppError> {
-        if self.is_recording() || !matches!(self.state, AppState::Default) {
+        if self.is_recording() {
             return Err(AppError::NotIdle);
         }
         // Defensive: drop armed channels whose index is outside the engine's
@@ -181,7 +165,7 @@ impl App {
         }
 
         let timestamp = Local::now().format("%Y-%m-%d-%H%M%S").to_string();
-        let output_dir = self.config.projects_dir.join(&timestamp);
+        let output_dir = self.settings.projects_dir.join(&timestamp);
 
         let consumer = self.engine.start_recording();
         let recording = Recording::start(
@@ -207,51 +191,20 @@ impl App {
         if let Some(r) = &mut self.recording {
             r.stop(sample);
         }
-        self.state = AppState::Default;
     }
 
     pub fn drop_marker(&mut self) {
-        if !self.can_mark() {
+        if !self.is_recording() {
             return;
         }
         let sample = self.sample_position();
         if let Some(r) = &mut self.recording {
             r.mark(sample);
         }
-    }
-
-    pub fn mark_and_name(&mut self) {
-        if !self.can_mark() {
-            return;
-        }
-        let sample = self.sample_position();
-        if let Some(r) = &mut self.recording {
-            r.mark(sample);
-        }
-        self.state = AppState::NamingTake {
-            buf: String::new(),
-            origin: TakeOrigin::Fresh,
-        };
-    }
-
-    pub fn name_take(&mut self) {
-        if !matches!(self.state, AppState::Default) {
-            return;
-        }
-        if !self
-            .current_timeline()
-            .is_some_and(|t| t.last_marker_unbound())
-        {
-            return;
-        }
-        self.state = AppState::NamingTake {
-            buf: String::new(),
-            origin: TakeOrigin::Retroactive,
-        };
     }
 
     pub fn delete_last_marker(&mut self) {
-        if !self.can_mark() {
+        if !self.is_recording() {
             return;
         }
         if let Some(t) = self.current_timeline_mut() {
@@ -259,81 +212,48 @@ impl App {
         }
     }
 
-    pub fn begin_confirm_stop(&mut self) {
-        if self.is_recording() && matches!(self.state, AppState::Default) {
-            self.state = AppState::ConfirmingStop;
-        }
+    /// Whether the trailing marker exists and isn't part of any take —
+    /// the gate for retroactive naming and unmarking.
+    pub fn has_unbound_marker(&self) -> bool {
+        self.current_timeline()
+            .is_some_and(|t| t.last_marker_unbound())
     }
 
-    pub fn cancel_confirm_stop(&mut self) {
-        if matches!(self.state, AppState::ConfirmingStop) {
-            self.state = AppState::Default;
-        }
-    }
-
-    pub fn cancel_take_naming(&mut self) {
-        let AppState::NamingTake { origin, .. } = self.state else {
-            return;
-        };
-        if matches!(origin, TakeOrigin::Fresh) {
-            if let Some(t) = self.current_timeline_mut() {
-                t.delete_last_marker();
-            }
-        }
-        self.state = AppState::Default;
-    }
-
-    pub fn commit_take_naming(&mut self) {
-        let AppState::NamingTake { buf, .. } = &self.state else {
-            return;
-        };
-        let trimmed = buf.trim().to_string();
+    /// Promotes the trailing unbound marker into a named take and
+    /// dispatches its bounce. Returns `true` on success. Trims the name;
+    /// returns `false` for an empty name or if there's no marker to bind.
+    pub fn create_take(&mut self, name: &str) -> bool {
+        let trimmed = name.trim().to_string();
         if trimmed.is_empty() {
-            self.cancel_take_naming();
-            return;
+            return false;
         }
-
         let sample_rate = self.engine.sample_rate();
-        let mut new_job: Option<BounceJob> = None;
-        if let Some(r) = &mut self.recording {
-            if r.timeline.create_take(trimmed) {
-                let flushed_samples = r.flushed_samples();
-                if let Some(take) = r.timeline.takes().last() {
-                    new_job = Some(BounceJob {
-                        take: take.clone(),
-                        sample_rate,
-                        output_dir: self.config.bounces_dir.clone(),
-                        recording_timestamp: r.started_at.format("%Y-%m-%d-%H%M%S").to_string(),
-                        channel_files: r.channel_files.clone(),
-                        flushed_samples,
-                    });
-                }
-            }
+        let Some(r) = &mut self.recording else {
+            return false;
+        };
+        if !r.timeline.create_take(trimmed) {
+            return false;
         }
-        if let Some(job) = new_job {
+        let flushed_samples = r.flushed_samples();
+        let job = r.timeline.takes().last().map(|take| BounceJob {
+            take: take.clone(),
+            sample_rate,
+            output_dir: self.settings.bounces_dir.clone(),
+            recording_timestamp: r.started_at.format("%Y-%m-%d-%H%M%S").to_string(),
+            channel_files: r.channel_files.clone(),
+            flushed_samples,
+        });
+        if let Some(job) = job {
             self.bounce_pool.dispatch(job);
         }
-
-        self.state = AppState::Default;
-    }
-
-    pub fn take_name_append_char(&mut self, c: char) {
-        if let AppState::NamingTake { buf, .. } = &mut self.state {
-            buf.push(c);
-        }
-    }
-
-    pub fn take_name_backspace(&mut self) {
-        if let AppState::NamingTake { buf, .. } = &mut self.state {
-            buf.pop();
-        }
+        true
     }
 
     /// Saves the current channel state as a template under `name`.
     /// Caller is responsible for validating the name and surfacing UI
     /// feedback.
     pub fn save_template(&mut self, name: &str) -> io::Result<()> {
-        let path = template::path_for_name(&self.config.templates_dir, name);
+        let path = template::path_for_name(&self.settings.templates_dir, name);
         let template = Template {
             name: name.to_string(),
             device_name: self.engine.device_name().to_string(),
@@ -346,7 +266,7 @@ impl App {
     /// sorted by name. Files that fail to deserialize are silently
     /// skipped. Errors reading the directory yield an empty list.
     pub fn list_templates(&self) -> Vec<Template> {
-        template::list(&self.config.templates_dir).unwrap_or_default()
+        template::list(&self.settings.templates_dir).unwrap_or_default()
     }
 
     /// Applies `template` to the session. Out-of-range template indices
@@ -378,11 +298,5 @@ impl App {
 
     pub fn sample_position(&self) -> u64 {
         self.engine.sample_position()
-    }
-
-    /// Whether marker-list mutations (Space, T, Backspace) are allowed:
-    /// actively recording with no overlay open.
-    fn can_mark(&self) -> bool {
-        self.is_recording() && matches!(self.state, AppState::Default)
     }
 }

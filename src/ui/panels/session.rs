@@ -39,8 +39,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
                 app.engine.channel_count(),
             ),
         ),
-        labeled("Projects: ", app.config.projects_dir.display().to_string()),
-        labeled("Bounces:  ", app.config.bounces_dir.display().to_string()),
+        labeled(
+            "Projects: ",
+            app.settings.projects_dir.display().to_string(),
+        ),
+        labeled("Bounces:  ", app.settings.bounces_dir.display().to_string()),
     ];
 
     frame.render_widget(Paragraph::new(lines), inner);

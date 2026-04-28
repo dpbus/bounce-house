@@ -4,7 +4,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::App;
 use crate::template::Template;
-use crate::ui::modals::Action;
+use crate::ui::Action;
 use crate::ui::view::View;
 use crate::ui::widgets::{channel_preview_row, dim_status, flow_columns, key_hint, labeled, modal};
 

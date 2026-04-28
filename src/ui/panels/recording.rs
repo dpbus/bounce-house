@@ -1,13 +1,16 @@
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, AppState};
+use crate::app::App;
 use crate::recording::Recording;
 use crate::timeline::BounceStatus;
-use crate::ui::widgets::{dim_status, flow_columns, key_hint, panel, spinner_glyph, take_color};
+use crate::ui::view::View;
+use crate::ui::widgets::{
+    dim_status, flow_columns, input_with_cursor, key_hint, panel, spinner_glyph, take_color,
+};
 
-pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Recording", None, naming_hint(app));
+pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
+    let inner = panel(frame, area, "Recording", None, naming_hint(view));
 
     let Some(recording) = &app.recording else {
         frame.render_widget(Paragraph::new(dim_status("Idle")), inner);
@@ -31,7 +34,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(Paragraph::new(timer_line(app, recording)), header_row[0]);
     frame.render_widget(Paragraph::new(folder_line(recording)), header_row[1]);
 
-    let entries = take_entries(app);
+    let entries = take_entries(app, view);
     if entries.is_empty() {
         return;
     }
@@ -52,8 +55,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     flow_columns(frame, chunks[3], &entries, n_cols);
 }
 
-fn naming_hint(app: &App) -> Option<Line<'static>> {
-    matches!(app.state, AppState::NamingTake { .. }).then(|| {
+fn naming_hint(view: &View) -> Option<Line<'static>> {
+    view.take_naming().is_some().then(|| {
         let mut spans = vec![Span::raw(" ")];
         spans.extend(key_hint("Enter", "save  ", Color::Cyan));
         spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
@@ -116,27 +119,16 @@ fn folder_line(recording: &Recording) -> Line<'static> {
 
 /// Lines for the Takes section: in-progress naming buffer first, then
 /// named takes newest-first.
-fn take_entries(app: &App) -> Vec<Line<'static>> {
-    let naming_buf = match &app.state {
-        AppState::NamingTake { buf, .. } => Some(buf.as_str()),
-        _ => None,
-    };
+fn take_entries(app: &App, view: &View) -> Vec<Line<'static>> {
     let takes = app.current_timeline().map(|t| t.takes()).unwrap_or(&[]);
     let mut entries = Vec::new();
 
-    if let Some(buf) = naming_buf {
+    if let Some(overlay) = view.take_naming() {
         let next_color = takes.last().map(|t| t.color_index + 1).unwrap_or(0);
         let color = take_color(next_color as usize);
-        entries.push(Line::from(vec![
-            Span::styled("▌ ", Style::default().fg(color)),
-            Span::raw(buf.to_string()),
-            Span::styled(
-                "_",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ]));
+        let mut spans = vec![Span::styled("▌ ", Style::default().fg(color))];
+        spans.extend(input_with_cursor(overlay.input(), Style::default()));
+        entries.push(Line::from(spans));
     }
 
     let sample_rate = app.engine.sample_rate().0 as u64;

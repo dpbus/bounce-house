@@ -6,9 +6,10 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragra
 
 use crate::app::App;
 use crate::channel::Channel;
-use crate::ui::modals::Action;
+use crate::ui::Action;
+use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
-use crate::ui::widgets::{MODAL_BORDER_OVERHEAD, horizontal_meter, key_hint};
+use crate::ui::widgets::{MODAL_BORDER_OVERHEAD, horizontal_meter, input_with_cursor, key_hint};
 
 const METER_WIDTH: usize = 18;
 const LABEL_WIDTH: usize = 18;
@@ -26,7 +27,7 @@ pub struct ChannelPickerModal {
     /// Persisted scroll offset; using `Cell` so `draw(&self)` can adjust
     /// it without changing the modal's outward mutability.
     scroll_offset: Cell<usize>,
-    renaming: Option<String>,
+    renaming: Option<TextInput>,
 }
 
 impl ChannelPickerModal {
@@ -66,7 +67,7 @@ impl ChannelPickerModal {
                 Action::Stay
             }
             KeyCode::Tab => {
-                self.renaming = Some(self.focused_label(app).unwrap_or_default());
+                self.renaming = Some(TextInput::from_str(&self.focused_label(app)));
                 Action::Stay
             }
             _ => Action::Stay,
@@ -74,7 +75,7 @@ impl ChannelPickerModal {
     }
 
     fn handle_rename_key(&mut self, key: KeyEvent, app: &mut App) -> Action {
-        let Some(buf) = self.renaming.as_mut() else {
+        let Some(input) = self.renaming.as_mut() else {
             return Action::Stay;
         };
         match key.code {
@@ -83,10 +84,11 @@ impl ChannelPickerModal {
                 Action::Stay
             }
             KeyCode::Enter => {
-                let label = if buf.trim().is_empty() {
+                let trimmed = input.value().trim();
+                let label = if trimmed.is_empty() {
                     None
                 } else {
-                    Some(buf.trim().to_string())
+                    Some(trimmed.to_string())
                 };
                 if let Some(index) = self.focused_channel_index(app) {
                     app.set_label(index, label);
@@ -94,15 +96,10 @@ impl ChannelPickerModal {
                 self.renaming = None;
                 Action::Stay
             }
-            KeyCode::Backspace => {
-                buf.pop();
+            _ => {
+                input.handle_edit_key(key);
                 Action::Stay
             }
-            KeyCode::Char(c) => {
-                buf.push(c);
-                Action::Stay
-            }
-            _ => Action::Stay,
         }
     }
 
@@ -110,12 +107,12 @@ impl ChannelPickerModal {
         app.session.channels.get(self.cursor).map(|c| c.index)
     }
 
-    fn focused_label(&self, app: &App) -> Option<String> {
+    fn focused_label(&self, app: &App) -> String {
         app.session
             .channels
             .get(self.cursor)
             .and_then(|c| c.label.clone())
-            .or(Some(String::new()))
+            .unwrap_or_default()
     }
 
     pub fn draw(&self, frame: &mut Frame, app: &App) {
@@ -151,8 +148,8 @@ impl ChannelPickerModal {
         let mut items: Vec<ListItem> = Vec::with_capacity(total * 2);
         for (i, channel) in app.session.channels.iter().enumerate() {
             let focused = i == self.cursor;
-            let renaming_buf = if focused {
-                self.renaming.as_deref()
+            let renaming_input = if focused {
+                self.renaming.as_ref()
             } else {
                 None
             };
@@ -163,7 +160,7 @@ impl ChannelPickerModal {
                 level,
                 peak,
                 focused,
-                renaming_buf,
+                renaming_input,
             )));
             if i + 1 < total {
                 items.push(ListItem::new(separator_row()));
@@ -194,7 +191,10 @@ impl ChannelPickerModal {
         *state.offset_mut() = offset;
         frame.render_stateful_widget(list, chunks[0], &mut state);
 
-        frame.render_widget(Paragraph::new(footer_line(&self.renaming)), chunks[2]);
+        frame.render_widget(
+            Paragraph::new(footer_line(self.renaming.is_some())),
+            chunks[2],
+        );
     }
 }
 
@@ -214,7 +214,7 @@ fn channel_row(
     level: f32,
     peak: f32,
     focused: bool,
-    renaming_buffer: Option<&str>,
+    renaming_input: Option<&TextInput>,
 ) -> Line<'static> {
     let row_style = if focused {
         Style::default()
@@ -240,17 +240,9 @@ fn channel_row(
     spans.push(Span::styled(db_label(level), row_style));
     spans.push(Span::raw("  "));
 
-    if let Some(buf) = renaming_buffer {
-        spans.push(Span::styled(
-            format!("✏ {}", truncate(buf, LABEL_WIDTH.saturating_sub(3))),
-            Style::default().fg(Color::Yellow),
-        ));
-        spans.push(Span::styled(
-            "_",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::SLOW_BLINK),
-        ));
+    if let Some(input) = renaming_input {
+        spans.push(Span::styled("✏ ", Style::default().fg(Color::Yellow)));
+        spans.extend(input_with_cursor(input, Style::default().fg(Color::Yellow)));
     } else {
         let label = channel.label.clone().unwrap_or_else(|| "—".to_string());
         spans.push(Span::styled(
@@ -280,9 +272,9 @@ fn truncate(s: &str, max: usize) -> String {
     s.chars().take(max).collect()
 }
 
-fn footer_line(renaming: &Option<String>) -> Line<'static> {
+fn footer_line(renaming: bool) -> Line<'static> {
     let mut spans = Vec::new();
-    if renaming.is_some() {
+    if renaming {
         spans.extend(key_hint("Enter", "save  ", Color::Cyan));
         spans.extend(key_hint("Esc", "cancel", Color::DarkGray));
     } else {

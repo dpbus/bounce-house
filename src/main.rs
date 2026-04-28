@@ -2,11 +2,11 @@ mod app;
 mod audio;
 mod bounce;
 mod channel;
-mod config;
 #[cfg(debug_assertions)]
 mod debug;
 mod recording;
 mod session;
+mod settings;
 mod template;
 mod timeline;
 mod ui;
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 
-use crate::config::Config;
+use crate::settings::Settings;
 use crate::template::Template;
 
 #[derive(Parser)]
@@ -29,16 +29,16 @@ struct Cli {
 
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
-    let config = Config::load_or_create()?;
+    let settings = Settings::load_or_create()?;
     let template = cli
         .template
-        .and_then(|arg| load_template_from_arg(&arg, &config));
-    ui::run(config, template)
+        .and_then(|arg| load_template_from_arg(&arg, &settings));
+    ui::run(settings, template)
 }
 
 /// Loads the template name or path from command line arg (`-t`)
-fn load_template_from_arg(arg: &str, config: &Config) -> Option<Template> {
-    let path = template_path_from_arg(arg, &config.templates_dir);
+fn load_template_from_arg(arg: &str, settings: &Settings) -> Option<Template> {
+    let path = template_path_from_arg(arg, &settings.templates_dir);
     match Template::load(&path) {
         Ok(t) => Some(t),
         Err(e) => {
@@ -49,13 +49,8 @@ fn load_template_from_arg(arg: &str, config: &Config) -> Option<Template> {
 }
 
 fn template_path_from_arg(arg: &str, templates_dir: &Path) -> PathBuf {
-    if arg.starts_with("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(&arg[2..]);
-        }
-    }
-    if arg.contains('/') {
-        return PathBuf::from(arg);
+    if arg.starts_with("~/") || arg.contains('/') {
+        return crate::settings::expand_home_dir(arg);
     }
     template::path_for_name(templates_dir, arg)
 }

@@ -2,6 +2,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
 use crate::channel::Channel;
+use crate::ui::text_input::TextInput;
 
 const MIN_DB: f32 = -45.0;
 const MAX_DB: f32 = 6.0;
@@ -317,6 +318,25 @@ pub fn channel_preview_row(channel: &Channel) -> Line<'static> {
         Span::styled(format!("Ch {:>2}  ", channel.index), row_style),
         Span::styled(label, row_style),
     ])
+}
+
+/// Renders a `TextInput` as spans with a reverse-video block cursor on
+/// the char under the cursor (or a trailing space at end-of-string).
+/// `base` styles the surrounding text; the cursor cell layers REVERSED
+/// over it.
+pub fn input_with_cursor(input: &TextInput, base: Style) -> Vec<Span<'static>> {
+    let (before, at, after) = input.split();
+    let cursor_style = base.add_modifier(Modifier::REVERSED);
+    let mut spans = Vec::with_capacity(3);
+    if !before.is_empty() {
+        spans.push(Span::styled(before.to_string(), base));
+    }
+    let cursor_glyph = if at.is_empty() { " " } else { at };
+    spans.push(Span::styled(cursor_glyph.to_string(), cursor_style));
+    if !after.is_empty() {
+        spans.push(Span::styled(after.to_string(), base));
+    }
+    spans
 }
 
 /// Single dim line used as a placeholder when a panel has nothing active.

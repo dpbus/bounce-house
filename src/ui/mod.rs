@@ -3,8 +3,16 @@ mod footer;
 mod input;
 mod modals;
 mod panels;
+mod take_naming;
+mod text_input;
 mod view;
 mod widgets;
+
+/// Lifecycle signal returned by an overlay's `handle_key`: stay open or close.
+pub enum Action {
+    Stay,
+    Close,
+}
 
 use std::io::{self, stdout};
 use std::time::Duration;
@@ -17,16 +25,16 @@ use crossterm::{
 use ratatui::prelude::*;
 
 use crate::app::App;
-use crate::config::Config;
+use crate::settings::Settings;
 use crate::template::Template;
 use crate::ui::view::View;
 
-pub fn run(config: Config, template: Option<Template>) -> io::Result<()> {
+pub fn run(settings: Settings, template: Option<Template>) -> io::Result<()> {
     terminal::enable_raw_mode()?;
     execute!(stdout(), EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    let result = bootstrap(&mut terminal, config, template);
+    let result = bootstrap(&mut terminal, settings, template);
 
     terminal::disable_raw_mode()?;
     execute!(stdout(), LeaveAlternateScreen)?;
@@ -36,7 +44,7 @@ pub fn run(config: Config, template: Option<Template>) -> io::Result<()> {
 
 fn bootstrap(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    config: Config,
+    settings: Settings,
     template: Option<Template>,
 ) -> io::Result<()> {
     let device = match device_picker::pick(terminal) {
@@ -45,7 +53,7 @@ fn bootstrap(
         Err(e) => return Err(e),
     };
 
-    let mut app = App::new(device, config);
+    let mut app = App::new(device, settings);
     #[cfg(debug_assertions)]
     crate::debug::pad_channels_from_env(&mut app);
     let mut view = View::new();

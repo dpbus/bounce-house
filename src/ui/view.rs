@@ -1,13 +1,15 @@
 use chrono::{DateTime, Duration, Local};
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding};
 
 use crate::app::App;
+use crate::ui::Action;
 use crate::ui::footer;
 use crate::ui::input;
-use crate::ui::modals::{self, ActiveModal};
+use crate::ui::modals::ActiveModal;
 use crate::ui::panels::{meters, recording, session, waveform};
+use crate::ui::take_naming::TakeNaming;
 
 const TOP_BAR_HEIGHT: u16 = 12;
 const WAVEFORM_HEIGHT: u16 = 18;
@@ -19,6 +21,8 @@ const TEMPLATE_FEEDBACK_SECS: i64 = 3;
 /// to draw and key-handling functions.
 pub struct View {
     active_modal: Option<ActiveModal>,
+    take_naming: Option<TakeNaming>,
+    confirm_stop: bool,
     last_template_save: Option<Flash<String>>,
     last_template_load: Option<Flash<String>>,
 }
@@ -50,6 +54,8 @@ impl View {
     pub fn new() -> Self {
         Self {
             active_modal: None,
+            take_naming: None,
+            confirm_stop: false,
             last_template_save: None,
             last_template_load: None,
         }
@@ -57,6 +63,22 @@ impl View {
 
     pub fn open_modal(&mut self, modal: ActiveModal) {
         self.active_modal = Some(modal);
+    }
+
+    pub fn open_take_naming(&mut self, overlay: TakeNaming) {
+        self.take_naming = Some(overlay);
+    }
+
+    pub fn take_naming(&self) -> Option<&TakeNaming> {
+        self.take_naming.as_ref()
+    }
+
+    pub fn open_confirm_stop(&mut self) {
+        self.confirm_stop = true;
+    }
+
+    pub fn confirm_stop_active(&self) -> bool {
+        self.confirm_stop
     }
 
     pub fn flash_template_save(&mut self, name: String) {
@@ -106,10 +128,10 @@ impl View {
             .split(chunks[0]);
 
         session::draw(frame, top_chunks[0], app, self);
-        recording::draw(frame, top_chunks[1], app);
+        recording::draw(frame, top_chunks[1], app, self);
         waveform::draw(frame, chunks[2], app);
         meters::draw(frame, chunks[4], app);
-        footer::draw(frame, chunks[6], app);
+        footer::draw(frame, chunks[6], app, self);
 
         if let Some(modal) = &self.active_modal {
             modal.draw(frame, app);
@@ -117,15 +139,27 @@ impl View {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent, app: &mut App) -> input::Outcome {
+        // Inline overlays take priority over modals and over normal input.
+        if let Some(mut overlay) = self.take_naming.take() {
+            if matches!(overlay.handle_key(key, app), Action::Stay) {
+                self.take_naming = Some(overlay);
+            }
+            return input::Outcome::Continue;
+        }
+        if self.confirm_stop {
+            self.confirm_stop = false;
+            if matches!(key.code, KeyCode::Esc) {
+                app.stop_recording();
+            }
+            return input::Outcome::Continue;
+        }
         // Take the modal out of `self.active_modal` so we can pass `&mut self`
         // (for view-level state like flashes) alongside the modal call. Without
         // the take, the modal's borrow against `self.active_modal` would
         // alias the `self` we need to forward.
         if let Some(mut modal) = self.active_modal.take() {
-            let action = modal.handle_key(key, app, self);
-            match action {
-                modals::Action::Stay => self.active_modal = Some(modal),
-                modals::Action::Close => {} // modal dropped here
+            if matches!(modal.handle_key(key, app, self), Action::Stay) {
+                self.active_modal = Some(modal);
             }
             return input::Outcome::Continue;
         }

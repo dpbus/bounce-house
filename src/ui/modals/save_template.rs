@@ -4,9 +4,12 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::App;
 use crate::template;
-use crate::ui::modals::Action;
+use crate::ui::Action;
+use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
-use crate::ui::widgets::{channel_preview_row, flow_columns, key_hint, labeled, modal};
+use crate::ui::widgets::{
+    channel_preview_row, flow_columns, input_with_cursor, key_hint, labeled, modal,
+};
 
 const COL_WIDTH: u16 = 20;
 const MAX_COLS: u16 = 4;
@@ -28,19 +31,21 @@ struct ContentLayout {
 }
 
 pub struct SaveTemplateModal {
-    buf: String,
+    input: TextInput,
 }
 
 impl SaveTemplateModal {
     pub fn new() -> Self {
-        Self { buf: String::new() }
+        Self {
+            input: TextInput::new(),
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> Action {
         match key.code {
             KeyCode::Esc => Action::Close,
             KeyCode::Enter => {
-                let name = self.buf.trim();
+                let name = self.input.value().trim();
                 if !template::is_valid_name(name) {
                     return Action::Stay;
                 }
@@ -49,15 +54,10 @@ impl SaveTemplateModal {
                 }
                 Action::Close
             }
-            KeyCode::Backspace => {
-                self.buf.pop();
+            _ => {
+                self.input.handle_edit_key(key);
                 Action::Stay
             }
-            KeyCode::Char(c) => {
-                self.buf.push(c);
-                Action::Stay
-            }
-            _ => Action::Stay,
         }
     }
 
@@ -88,7 +88,7 @@ impl SaveTemplateModal {
             .map(channel_preview_row)
             .collect();
         flow_columns(frame, chunks[2], &channels, layout.cols as u32);
-        frame.render_widget(Paragraph::new(save_as_line(&self.buf)), chunks[4]);
+        frame.render_widget(Paragraph::new(save_as_line(&self.input)), chunks[4]);
         frame.render_widget(Paragraph::new(hints_line()).centered(), chunks[6]);
     }
 }
@@ -121,17 +121,13 @@ fn header_lines(app: &App) -> Vec<Line<'static>> {
     ]
 }
 
-fn save_as_line(buf: &str) -> Line<'static> {
-    Line::from(vec![
-        Span::styled("Save as:   ", Style::default().fg(Color::Yellow)),
-        Span::raw(buf.to_string()),
-        Span::styled(
-            "_",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::SLOW_BLINK),
-        ),
-    ])
+fn save_as_line(input: &TextInput) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        "Save as:   ",
+        Style::default().fg(Color::Yellow),
+    )];
+    spans.extend(input_with_cursor(input, Style::default()));
+    Line::from(spans)
 }
 
 fn hints_line() -> Line<'static> {
