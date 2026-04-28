@@ -44,7 +44,6 @@ impl Settings {
         Ok(settings)
     }
 
-    /// Persists the current settings to disk at the canonical path.
     pub fn save(&self) -> io::Result<()> {
         self.write(&settings_path())
     }

@@ -44,7 +44,6 @@ impl<T> Flash<T> {
         }
     }
 
-    /// Returns the wrapped value if it was set within the last `secs` seconds.
     pub fn fresh_within(&self, secs: i64) -> Option<&T> {
         (Local::now() - self.at < Duration::seconds(secs)).then_some(&self.value)
     }

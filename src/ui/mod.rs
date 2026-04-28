@@ -8,7 +8,6 @@ mod text_input;
 mod view;
 mod widgets;
 
-/// Lifecycle signal returned by an overlay's `handle_key`: stay open or close.
 pub enum Action {
     Stay,
     Close,

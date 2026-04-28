@@ -44,8 +44,8 @@ pub fn spinner_glyph(tick: u64) -> &'static str {
 const SILENCE_LEVEL: f32 = 0.0001;
 const SILENCE_DB: f32 = -80.0;
 
-/// Background tint for the meter "track" — empty cells use this bg
-/// instead of the previous `│...░...│` framing approach.
+/// Background tint for the meter "track" — every cell, full or empty,
+/// gets this bg so the bar renders as bands inside a continuous track.
 const METER_TRACK_BG: Color = Color::Rgb(40, 40, 40);
 
 pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec<Span<'static>> {

@@ -212,8 +212,6 @@ impl App {
         }
     }
 
-    /// Whether the trailing marker exists and isn't part of any take —
-    /// the gate for retroactive naming and unmarking.
     pub fn has_unbound_marker(&self) -> bool {
         self.current_timeline()
             .is_some_and(|t| t.last_marker_unbound())
@@ -249,9 +247,6 @@ impl App {
         true
     }
 
-    /// Saves the current channel state as a template under `name`.
-    /// Caller is responsible for validating the name and surfacing UI
-    /// feedback.
     pub fn save_template(&mut self, name: &str) -> io::Result<()> {
         let path = template::path_for_name(&self.settings.templates_dir, name);
         let template = Template {
@@ -262,9 +257,8 @@ impl App {
         template.save(&path)
     }
 
-    /// Returns every template currently on disk in `templates_dir`,
-    /// sorted by name. Files that fail to deserialize are silently
-    /// skipped. Errors reading the directory yield an empty list.
+    /// Files that fail to deserialize are silently skipped; errors
+    /// reading the directory yield an empty list.
     pub fn list_templates(&self) -> Vec<Template> {
         template::list(&self.settings.templates_dir).unwrap_or_default()
     }
