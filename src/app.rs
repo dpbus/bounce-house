@@ -384,9 +384,7 @@ impl App {
         if self.is_recording() || !matches!(self.state, AppState::Default) {
             return;
         }
-        self.state = AppState::SavingTemplate {
-            buf: String::new(),
-        };
+        self.state = AppState::SavingTemplate { buf: String::new() };
     }
 
     pub fn cancel_save_template(&mut self) {

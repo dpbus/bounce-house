@@ -48,8 +48,7 @@ impl Config {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let text = toml::to_string_pretty(self)
-            .map_err(|e| io::Error::other(e))?;
+        let text = toml::to_string_pretty(self).map_err(|e| io::Error::other(e))?;
         fs::write(path, text)
     }
 }

@@ -6,7 +6,13 @@ use crate::app::App;
 use crate::ui::widgets::{labeled, panel};
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Session", Some(save_template_action_hint(app)), None);
+    let inner = panel(
+        frame,
+        area,
+        "Session",
+        Some(save_template_action_hint(app)),
+        None,
+    );
 
     let duration = Local::now() - app.session.started_at;
     let secs = duration.num_seconds().max(0);
@@ -32,14 +38,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
                 app.engine.channel_count(),
             ),
         ),
-        labeled(
-            "Projects: ",
-            app.config.projects_dir.display().to_string(),
-        ),
-        labeled(
-            "Bounces:  ",
-            app.config.bounces_dir.display().to_string(),
-        ),
+        labeled("Projects: ", app.config.projects_dir.display().to_string()),
+        labeled("Bounces:  ", app.config.bounces_dir.display().to_string()),
     ];
 
     frame.render_widget(Paragraph::new(lines), inner);

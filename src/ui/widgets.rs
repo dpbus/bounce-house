@@ -295,12 +295,7 @@ pub const MODAL_BORDER_OVERHEAD: u16 = 2;
 /// cells of content, plus chrome. Draws Clear + a cyan-bordered Block with
 /// `title` and returns the inner Rect for the caller to render content
 /// into. Caller thinks in content terms; chrome is fully internalized.
-pub fn modal(
-    frame: &mut Frame,
-    title: &str,
-    content_width: u16,
-    content_height: u16,
-) -> Rect {
+pub fn modal(frame: &mut Frame, title: &str, content_width: u16, content_height: u16) -> Rect {
     let outer = center_rect(
         frame.area(),
         content_width.saturating_add(MODAL_BORDER_OVERHEAD),

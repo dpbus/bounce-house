@@ -3,7 +3,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::{App, AppState};
 use crate::channel::Channel;
-use crate::ui::widgets::{flow_columns, key_hint, labeled, modal, MODAL_BORDER_OVERHEAD};
+use crate::ui::widgets::{MODAL_BORDER_OVERHEAD, flow_columns, key_hint, labeled, modal};
 
 const COL_WIDTH: u16 = 18;
 const MAX_COLS: u16 = 4;

@@ -28,7 +28,9 @@ struct Cli {
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
     let config = Config::load_or_create()?;
-    let template = cli.template.and_then(|arg| load_template_from_arg(&arg, &config));
+    let template = cli
+        .template
+        .and_then(|arg| load_template_from_arg(&arg, &config));
     ui::run(config, template)
 }
 

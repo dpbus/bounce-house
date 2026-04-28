@@ -3,7 +3,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, AppState};
 use crate::channel::Channel;
-use crate::ui::widgets::{horizontal_meter, key_hint, modal, MODAL_BORDER_OVERHEAD};
+use crate::ui::widgets::{MODAL_BORDER_OVERHEAD, horizontal_meter, key_hint, modal};
 
 const METER_WIDTH: usize = 30;
 const WIDTH_PCT: u16 = 80;
@@ -108,4 +108,3 @@ fn footer_line(renaming: &Option<String>) -> Line<'static> {
         Line::from(spans)
     }
 }
-
