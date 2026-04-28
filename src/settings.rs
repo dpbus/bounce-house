@@ -110,6 +110,8 @@ fn settings_dir() -> PathBuf {
     home_dir().join(".config").join("bounce-house")
 }
 
+/// Falls back to `.` when `HOME` is unset (sparse launchd / minimal env)
+/// so first-launch path resolution still produces something writeable.
 fn home_dir() -> PathBuf {
-    PathBuf::from(env::var_os("HOME").expect("HOME not set"))
+    env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| ".".into())
 }

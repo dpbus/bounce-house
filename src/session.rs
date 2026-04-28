@@ -16,10 +16,6 @@ impl Session {
         }
     }
 
-    pub fn channel(&self, index: u16) -> Option<&Channel> {
-        self.channels.get(index as usize)
-    }
-
     pub fn channel_mut(&mut self, index: u16) -> Option<&mut Channel> {
         self.channels.get_mut(index as usize)
     }

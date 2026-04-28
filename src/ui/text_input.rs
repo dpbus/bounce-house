@@ -14,7 +14,7 @@ impl TextInput {
     }
 
     /// Cursor is placed at the end so the user types after the prefilled value.
-    pub fn from_str(initial: &str) -> Self {
+    pub fn with_value(initial: &str) -> Self {
         let value = initial.to_string();
         let cursor = value.len();
         Self { value, cursor }

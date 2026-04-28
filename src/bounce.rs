@@ -240,7 +240,12 @@ fn encode_tail(
 }
 
 fn unique_mp3_path(dir: &Path, prefix: &str, take_name: &str) -> PathBuf {
-    let safe = safe_name(take_name);
+    let trimmed = take_name.trim();
+    let safe = if trimmed.is_empty() {
+        "take".to_string()
+    } else {
+        crate::sanitize::filename_safe(trimmed)
+    };
     let base = dir.join(format!("{}_{}.mp3", prefix, safe));
     if !base.exists() {
         return base;
@@ -252,21 +257,4 @@ fn unique_mp3_path(dir: &Path, prefix: &str, take_name: &str) -> PathBuf {
         }
     }
     unreachable!()
-}
-
-fn safe_name(input: &str) -> String {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return "take".to_string();
-    }
-    trimmed
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }

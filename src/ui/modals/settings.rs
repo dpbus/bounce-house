@@ -40,9 +40,9 @@ impl SettingsModal {
     pub fn new(settings: &Settings) -> Self {
         Self {
             bufs: [
-                TextInput::from_str(&settings.projects_dir.display().to_string()),
-                TextInput::from_str(&settings.bounces_dir.display().to_string()),
-                TextInput::from_str(&settings.templates_dir.display().to_string()),
+                TextInput::with_value(&settings.projects_dir.display().to_string()),
+                TextInput::with_value(&settings.bounces_dir.display().to_string()),
+                TextInput::with_value(&settings.templates_dir.display().to_string()),
             ],
             focused: 0,
             error: None,

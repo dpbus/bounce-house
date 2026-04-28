@@ -82,4 +82,12 @@ impl Recording {
         let end = self.stopped_at.unwrap_or_else(Local::now);
         (end - self.started_at).num_seconds().max(0) as u64
     }
+
+    /// Seconds since the trailing marker, in absolute-engine-sample
+    /// terms. Returns 0 when there are no markers yet.
+    pub fn since_last_marker_secs(&self, current_abs_sample: u64, sample_rate: SampleRate) -> u64 {
+        let last_marker = self.timeline.markers().last().map(|m| m.sample).unwrap_or(0);
+        let elapsed_samples = current_abs_sample.saturating_sub(self.start_sample);
+        elapsed_samples.saturating_sub(last_marker) / sample_rate.0 as u64
+    }
 }

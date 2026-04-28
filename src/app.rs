@@ -32,6 +32,10 @@ pub struct App {
     pub level_history: VecDeque<LevelSample>,
     pub total_ticks: u64,
     pub waveform_window_secs: u64,
+    /// Per-channel max peak observed across the level observations
+    /// drained this tick — fed into the meter decay. Reused as a
+    /// scratch buffer so the 60Hz tick path doesn't allocate.
+    tick_peaks: Vec<f32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -65,6 +69,7 @@ impl App {
             level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
             total_ticks: 0,
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
+            tick_peaks: vec![0.0; n],
         }
     }
 
@@ -88,8 +93,9 @@ impl App {
     }
 
     fn apply_bounce_status_updates(&mut self) {
-        for update in self.bounce_pool.drain_updates() {
-            if let Some(r) = &mut self.recording {
+        let updates = self.bounce_pool.drain_updates();
+        if let Some(r) = &mut self.recording {
+            for update in updates {
                 r.timeline.set_bounce_status(update.take_id, update.status);
             }
         }
@@ -98,11 +104,14 @@ impl App {
     /// Drains observations into both meter decay state and waveform history.
     fn drain_level_observations(&mut self) {
         let n_channels = self.session.channels.len();
-        let mut tick_max = vec![0.0f32; n_channels];
+        if self.tick_peaks.len() < n_channels {
+            self.tick_peaks.resize(n_channels, 0.0);
+        }
+        self.tick_peaks[..n_channels].fill(0.0);
         while let Ok(obs) = self.levels_consumer.pop() {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
-                tick_max[i] = tick_max[i].max(peak);
+                self.tick_peaks[i] = self.tick_peaks[i].max(peak);
                 if self.session.channels[i].armed {
                     combined = combined.max(peak);
                 }
@@ -113,7 +122,8 @@ impl App {
                 recorded: obs.recorded,
             });
         }
-        for (i, &peak) in tick_max.iter().enumerate() {
+        for i in 0..n_channels {
+            let peak = self.tick_peaks[i];
             self.display_levels[i] = peak.max(self.display_levels[i] * FAST_DECAY);
             self.peak_holds[i] = peak.max(self.peak_holds[i] * SLOW_DECAY);
         }
@@ -218,19 +228,19 @@ impl App {
     }
 
     /// Promotes the trailing unbound marker into a named take and
-    /// dispatches its bounce. Returns `true` on success. Trims the name;
-    /// returns `false` for an empty name or if there's no marker to bind.
-    pub fn create_take(&mut self, name: &str) -> bool {
+    /// dispatches its bounce. Trims the name; silently no-ops for an
+    /// empty name or when there's no unbound marker.
+    pub fn create_take(&mut self, name: &str) {
         let trimmed = name.trim().to_string();
         if trimmed.is_empty() {
-            return false;
+            return;
         }
         let sample_rate = self.engine.sample_rate();
         let Some(r) = &mut self.recording else {
-            return false;
+            return;
         };
         if !r.timeline.create_take(trimmed) {
-            return false;
+            return;
         }
         let flushed_samples = r.flushed_samples();
         let job = r.timeline.takes().last().map(|take| BounceJob {
@@ -244,7 +254,6 @@ impl App {
         if let Some(job) = job {
             self.bounce_pool.dispatch(job);
         }
-        true
     }
 
     pub fn save_template(&mut self, name: &str) -> io::Result<()> {

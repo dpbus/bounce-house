@@ -67,7 +67,7 @@ impl ChannelPickerModal {
                 Action::Stay
             }
             KeyCode::Tab => {
-                self.renaming = Some(TextInput::from_str(&self.focused_label(app)));
+                self.renaming = Some(TextInput::with_value(&self.focused_label(app)));
                 Action::Stay
             }
             _ => Action::Stay,

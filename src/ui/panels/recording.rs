@@ -80,28 +80,14 @@ fn timer_line(app: &App, recording: &Recording) -> Line<'static> {
         style,
     )];
     if app.is_recording() {
-        let since = since_last_marker_secs(app, recording);
+        let since = recording
+            .since_last_marker_secs(app.engine.sample_position(), app.engine.sample_rate());
         spans.push(Span::styled(
             format!("  ▌ {:02}:{:02}", since / 60, since % 60),
             Style::default().fg(Color::DarkGray),
         ));
     }
     Line::from(spans)
-}
-
-fn since_last_marker_secs(app: &App, recording: &Recording) -> u64 {
-    let sample_rate = app.engine.sample_rate().0 as u64;
-    let last_marker = recording
-        .timeline
-        .markers()
-        .last()
-        .map(|m| m.sample)
-        .unwrap_or(0);
-    let elapsed_samples = app
-        .engine
-        .sample_position()
-        .saturating_sub(recording.start_sample);
-    elapsed_samples.saturating_sub(last_marker) / sample_rate
 }
 
 fn folder_line(recording: &Recording) -> Line<'static> {

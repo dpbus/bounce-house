@@ -5,7 +5,11 @@ pub struct Marker {
     pub sample: u64,
 }
 
+/// Lifecycle of a bounce job. The `Done`/`Failed` payloads aren't read
+/// yet, but they exist so the UI can surface the file path or error
+/// message later.
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum BounceStatus {
     Pending,
     Bouncing,
