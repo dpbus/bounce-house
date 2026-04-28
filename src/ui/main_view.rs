@@ -2,8 +2,8 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 use crate::app::{App, AppState};
+use crate::ui::panels::{meters, recording, session, waveform};
 use crate::ui::widgets::{key_hint, key_hint_when};
-use crate::ui::{meter_panel, recording_panel, session_panel, waveform};
 
 const TOP_BAR_HEIGHT: u16 = 12;
 const WAVEFORM_HEIGHT: u16 = 18;
@@ -33,10 +33,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[0]);
 
-    session_panel::draw(frame, top_chunks[0], app);
-    recording_panel::draw(frame, top_chunks[1], app);
+    session::draw(frame, top_chunks[0], app);
+    recording::draw(frame, top_chunks[1], app);
     waveform::draw(frame, chunks[2], app);
-    meter_panel::draw(frame, chunks[4], app);
+    meters::draw(frame, chunks[4], app);
     frame.render_widget(Paragraph::new(footer_line(app)), chunks[6]);
 }
 

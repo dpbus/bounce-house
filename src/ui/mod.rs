@@ -1,11 +1,8 @@
 mod channel_picker;
 mod device_picker;
 mod main_view;
-mod meter_panel;
-mod recording_panel;
-mod session_panel;
+mod panels;
 mod template_save;
-mod waveform;
 mod widgets;
 
 use std::io::{self, stdout};
