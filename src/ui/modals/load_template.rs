@@ -6,7 +6,9 @@ use crate::app::App;
 use crate::template::Template;
 use crate::ui::Action;
 use crate::ui::view::View;
-use crate::ui::widgets::{channel_preview_row, dim_status, flow_columns, key_hint, labeled, modal};
+use crate::ui::widgets::{
+    channel_preview_row, dim_status, flow_columns, key_hint, labeled, modal, truncate_with_ellipsis,
+};
 
 const LIST_WIDTH: u16 = 20;
 const COL_WIDTH: u16 = 20;
@@ -98,7 +100,7 @@ impl LoadTemplateModal {
         let items: Vec<ListItem> = self
             .entries
             .iter()
-            .map(|t| ListItem::new(t.name.clone()))
+            .map(|t| ListItem::new(truncate_with_ellipsis(&t.name, LIST_WIDTH as usize)))
             .collect();
         let list =
             List::new(items).highlight_style(Style::default().fg(Color::White).bg(Color::DarkGray));

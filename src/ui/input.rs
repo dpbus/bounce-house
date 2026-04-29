@@ -2,7 +2,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::App;
 use crate::ui::modals::{
-    ActiveModal, ChannelPickerModal, LoadTemplateModal, SaveTemplateModal, SettingsModal,
+    ActiveModal, ChannelPickerModal, HelpModal, LoadTemplateModal, SaveTemplateModal,
+    SettingsModal,
 };
 use crate::ui::take_naming::TakeNaming;
 use crate::ui::view::View;
@@ -34,6 +35,7 @@ enum KeyAction {
     OpenSaveTemplate,
     OpenLoadTemplate,
     OpenSettings,
+    OpenHelp,
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
@@ -46,6 +48,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
             Char('t') | Char('T') => KeyAction::MarkAndOpenTakeNaming,
             Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
             Backspace => KeyAction::DeleteLastMarker,
+            Char('?') => KeyAction::OpenHelp,
             _ => KeyAction::None,
         };
     }
@@ -58,6 +61,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
         Char('c') | Char('C') => KeyAction::OpenChannelPicker,
         Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
         Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
+        Char('?') => KeyAction::OpenHelp,
         _ => KeyAction::None,
     }
 }
@@ -95,6 +99,9 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
         }
         KeyAction::OpenSettings => {
             view.open_modal(ActiveModal::Settings(SettingsModal::new(&app.settings)));
+        }
+        KeyAction::OpenHelp => {
+            view.open_modal(ActiveModal::Help(HelpModal::new()));
         }
     }
 }

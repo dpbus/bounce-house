@@ -1,4 +1,5 @@
 mod channel_picker;
+mod help;
 mod load_template;
 mod save_template;
 mod settings;
@@ -11,6 +12,7 @@ use crate::ui::Action;
 use crate::ui::view::View;
 
 pub use channel_picker::ChannelPickerModal;
+pub use help::HelpModal;
 pub use load_template::LoadTemplateModal;
 pub use save_template::SaveTemplateModal;
 pub use settings::SettingsModal;
@@ -23,6 +25,7 @@ pub enum ActiveModal {
     LoadTemplate(LoadTemplateModal),
     ChannelPicker(ChannelPickerModal),
     Settings(SettingsModal),
+    Help(HelpModal),
 }
 
 impl ActiveModal {
@@ -32,6 +35,7 @@ impl ActiveModal {
             ActiveModal::LoadTemplate(m) => m.handle_key(key, app, view),
             ActiveModal::ChannelPicker(m) => m.handle_key(key, app, view),
             ActiveModal::Settings(m) => m.handle_key(key, app, view),
+            ActiveModal::Help(m) => m.handle_key(key, app, view),
         }
     }
 
@@ -41,6 +45,7 @@ impl ActiveModal {
             ActiveModal::LoadTemplate(m) => m.draw(frame, app),
             ActiveModal::ChannelPicker(m) => m.draw(frame, app),
             ActiveModal::Settings(m) => m.draw(frame, app),
+            ActiveModal::Help(m) => m.draw(frame, app),
         }
     }
 }

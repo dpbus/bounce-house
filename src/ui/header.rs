@@ -4,11 +4,10 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::App;
 use crate::ui::view::View;
-use crate::ui::widgets::key_hint_when;
+use crate::ui::widgets::truncate_with_ellipsis;
 
-/// Width reserved for the right column. Sized for the hints line; flash
-/// messages sit in the same column when active.
-const RIGHT_COL_WIDTH: u16 = 50;
+/// Width reserved for the right column where flash messages render.
+const RIGHT_COL_WIDTH: u16 = 36;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let chunks = Layout::default()
@@ -17,24 +16,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         .split(area);
 
     frame.render_widget(Paragraph::new(status_line(app)), chunks[0]);
-    let right = flash_line(view).unwrap_or_else(|| hints_line(app, view));
-    frame.render_widget(Paragraph::new(right).right_aligned(), chunks[1]);
-}
-
-fn hints_line(app: &App, view: &View) -> Line<'static> {
-    let actionable = !app.is_recording()
-        && view.take_naming().is_none()
-        && !view.confirm_stop_active()
-        && !view.confirm_quit_active();
-    let mut spans = Vec::new();
-    spans.extend(key_hint_when(
-        actionable,
-        "Ctrl+S/L",
-        "save/load template  ",
-        Color::Cyan,
-    ));
-    spans.extend(key_hint_when(actionable, ",", "settings", Color::Cyan));
-    Line::from(spans)
+    if let Some(line) = flash_line(view) {
+        frame.render_widget(Paragraph::new(line).right_aligned(), chunks[1]);
+    }
 }
 
 fn status_line(app: &App) -> Line<'static> {
@@ -113,10 +97,11 @@ fn flash_line(view: &View) -> Option<Line<'static>> {
 }
 
 fn flash_text(verb: &str, name: &str) -> Line<'static> {
+    const NAME_MAX: usize = 22;
     Line::from(vec![
         Span::styled(" ✓ ", Style::default().fg(Color::Green)),
         Span::styled(
-            format!("{} '{}' ", verb, name),
+            format!("{} '{}' ", verb, truncate_with_ellipsis(name, NAME_MAX)),
             Style::default().fg(Color::Green),
         ),
     ])
