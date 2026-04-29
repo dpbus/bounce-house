@@ -24,9 +24,6 @@ const NAME_WIDTH: usize = 14;
 enum TimelineEvent {
     Take { index: usize },
     MarkerCluster { marker_count: usize },
-    /// One or more older events rolled up into a single line because
-    /// they overflowed the panel height.
-    OlderRollup { hidden_count: usize },
 }
 
 #[derive(Clone, Copy)]
@@ -59,8 +56,8 @@ impl TimelineLayout {
         }
     }
 
-    fn row_for_sec(&self, s: u64) -> usize {
-        let secs_ago = self.now_sec.saturating_sub(s);
+    fn row_for_sec(&self, secs: u64) -> usize {
+        let secs_ago = self.now_sec.saturating_sub(secs);
         let rows_back =
             (secs_ago.saturating_mul(self.panel_rows as u64) / self.max_secs.max(1)) as usize;
         self.now_row.saturating_sub(rows_back)
@@ -80,32 +77,46 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         return;
     }
 
+    let is_recording = app.is_recording();
     let layout = TimelineLayout::new(recording.elapsed_secs(), panel_rows);
     let naming_row = naming_row(view, recording, &layout);
     let bottom_row = naming_row.unwrap_or(layout.now_row);
 
-    let events = collect_events(recording, &layout, app.is_recording());
-    let placed_events = bump_into_rows(events, bottom_row, recording, &layout);
+    let events = collect_events(recording, &layout, is_recording);
+    let (placed_events, overflow_boundary) = bump_into_rows(events, bottom_row, recording, &layout);
 
     let mut grid: Vec<Line<'static>> = (0..panel_rows).map(|_| empty_row()).collect();
     render_events(&mut grid, &placed_events, recording, app.total_ticks);
     fill_take_continuations(&mut grid, &placed_events, recording, &layout);
     render_in_progress_segment(&mut grid, view, &placed_events, recording, &layout, naming_row);
 
-    let since_secs = if app.is_recording() {
+    // Recording-start indicator travels up with the proportional scale
+    // and anchors at row 0 past MIN_TIMELINE_SECS. Painted after the
+    // continuations so it survives any take block crossing its row.
+    let start_row = layout.row_for_sec(0);
+    if naming_row != Some(start_row) {
+        grid[start_row] = recording_start_line(recording_start_color(recording, view));
+    }
+
+    // Overflow boundary takes row 0 — its presence means the recording
+    // start has scrolled off into the hidden range above.
+    if let Some(boundary) = overflow_boundary {
+        grid[0] = view_top_boundary_line(recording.secs_at(boundary));
+    }
+
+    let since_secs = if is_recording {
         recording.since_last_marker_secs(app.engine.sample_position())
     } else {
-        recording.elapsed_secs()
+        0
     };
-    grid[layout.now_row] = now_line(inner.width, layout.now_sec, since_secs, app.is_recording());
-
+    grid[layout.now_row] = now_line(layout.now_sec, since_secs, is_recording);
 
     frame.render_widget(Paragraph::new(grid), inner);
 }
 
-/// Row where the in-progress take's name input lives during naming —
-/// the trailing marker's row, capped one above the clock so a freshly-
-/// dropped marker still sits just above the now line.
+/// Row where the take-name input lives — the trailing marker's row,
+/// capped one above the now line so a freshly-dropped marker can't
+/// collide with the clock.
 fn naming_row(view: &View, recording: &Recording, layout: &TimelineLayout) -> Option<usize> {
     view.take_naming().map(|_| {
         let trailing_sample = recording
@@ -145,6 +156,11 @@ fn collect_events(
 
     let mut clusters_by_row: HashMap<usize, (u64, usize)> = HashMap::new();
     for marker in timeline.markers() {
+        // Sample 0 is the recording-start auto-mark — represented by
+        // the pinned 0:00 line at row 0, not as a regular marker.
+        if marker.sample == 0 {
+            continue;
+        }
         if timeline.is_marker_bound(marker.sample) {
             continue;
         }
@@ -157,7 +173,7 @@ fn collect_events(
             .and_modify(|(_, count)| *count += 1)
             .or_insert((marker.sample, 1));
     }
-    for (_, (anchor_sample, marker_count)) in clusters_by_row {
+    for (anchor_sample, marker_count) in clusters_by_row.into_values() {
         events.push((
             anchor_sample,
             TimelineEvent::MarkerCluster { marker_count },
@@ -170,14 +186,15 @@ fn collect_events(
 
 /// Walk events newest-first, placing each at its proportional row
 /// unless that row is already taken — in which case the event bumps to
-/// the next free row above. Older events that don't fit roll up into a
-/// single `OlderRollup` at the topmost row.
+/// the next free row above. Returns the placements plus, when events
+/// overflow the panel, the sample at the top boundary so the row-0
+/// "view top" indicator can show its time.
 fn bump_into_rows(
     events: Vec<(u64, TimelineEvent)>,
     bottom_row: usize,
     recording: &Recording,
     layout: &TimelineLayout,
-) -> Vec<PlacedEvent> {
+) -> (Vec<PlacedEvent>, Option<u64>) {
     let total_events = events.len();
     let mut placed: Vec<PlacedEvent> = Vec::new();
     let mut next_free_row = bottom_row;
@@ -185,8 +202,8 @@ fn bump_into_rows(
         if next_free_row == 0 {
             break;
         }
-        let proportional = layout.row_for_sec(recording.secs_at(*sample));
-        let row = proportional.min(next_free_row - 1);
+        let proportional_row = layout.row_for_sec(recording.secs_at(*sample));
+        let row = proportional_row.min(next_free_row - 1);
         placed.push(PlacedEvent {
             row,
             anchor_sample: *sample,
@@ -195,19 +212,14 @@ fn bump_into_rows(
         next_free_row = row;
     }
 
-    if placed.len() < total_events {
-        // Out of rows. Repurpose the topmost placed slot as the rollup
-        // glyph, so its event is hidden too — hence the +1.
-        let hidden = total_events - placed.len() + 1;
-        if let Some(top) = placed.last_mut() {
-            top.event = TimelineEvent::OlderRollup {
-                hidden_count: hidden,
-            };
-        }
-    }
+    let overflow_boundary = if placed.len() < total_events {
+        placed.last().map(|p| p.anchor_sample)
+    } else {
+        None
+    };
 
     placed.reverse();
-    placed
+    (placed, overflow_boundary)
 }
 
 fn render_events(
@@ -227,9 +239,6 @@ fn render_events(
             TimelineEvent::MarkerCluster { marker_count } => {
                 let secs = recording.secs_at(placed.anchor_sample);
                 grid[placed.row] = marker_line(secs, marker_count);
-            }
-            TimelineEvent::OlderRollup { hidden_count } => {
-                grid[placed.row] = older_rollup_line(hidden_count);
             }
         }
     }
@@ -298,12 +307,7 @@ fn in_progress_fill_range(
     layout: &TimelineLayout,
     naming_row: usize,
 ) -> Range<usize> {
-    let markers = recording.timeline.markers();
-    let prev_sample = if markers.len() >= 2 {
-        markers[markers.len() - 2].sample
-    } else {
-        0
-    };
+    let prev_sample = second_to_last_marker_sample(recording);
     let prev_natural_row = layout.row_for_sec(recording.secs_at(prev_sample));
     let prev_placed_row = placed_row_for(placed_events, prev_sample, prev_natural_row);
     let committed_take_floor = placed_events
@@ -365,14 +369,52 @@ fn marker_line(secs: u64, count: usize) -> Line<'static> {
     Line::from(Span::styled(text, Style::default().fg(Color::DarkGray)))
 }
 
-fn older_rollup_line(hidden_count: usize) -> Line<'static> {
+/// Color for the `0:00` glyph: matches the take that starts at sample
+/// 0 if any, the in-progress take's color while naming one that begins
+/// at recording start, else `None` for a neutral dot.
+fn recording_start_color(recording: &Recording, view: &View) -> Option<Color> {
+    if view.take_naming().is_some() && second_to_last_marker_sample(recording) == 0 {
+        return Some(take_color(recording.timeline.next_take_color() as usize));
+    }
+    recording
+        .timeline
+        .marker_color_index(0)
+        .map(|i| take_color(i as usize))
+}
+
+/// Sample of the marker before the trailing one — i.e., the start of
+/// the span the user is naming or about to name. Defaults to 0 when
+/// fewer than two markers exist.
+fn second_to_last_marker_sample(recording: &Recording) -> u64 {
+    recording
+        .timeline
+        .markers()
+        .iter()
+        .rev()
+        .nth(1)
+        .map(|m| m.sample)
+        .unwrap_or(0)
+}
+
+fn recording_start_line(color: Option<Color>) -> Line<'static> {
+    let glyph = match color {
+        Some(c) => Span::styled("▌", Style::default().fg(c)),
+        None => Span::styled("·", Style::default().fg(Color::DarkGray)),
+    };
+    Line::from(vec![
+        glyph,
+        Span::styled(" 0:00", Style::default().fg(Color::DarkGray)),
+    ])
+}
+
+fn view_top_boundary_line(secs: u64) -> Line<'static> {
     Line::from(Span::styled(
-        format!("▴ {} older", hidden_count),
+        format!("▲ {}", mmss(secs)),
         Style::default().fg(Color::DarkGray),
     ))
 }
 
-fn now_line(width: u16, now_sec: u64, since_secs: u64, is_recording: bool) -> Line<'static> {
+fn now_line(now_sec: u64, since_secs: u64, is_recording: bool) -> Line<'static> {
     let (glyph, clock_style) = if is_recording {
         (
             "●",
@@ -381,14 +423,17 @@ fn now_line(width: u16, now_sec: u64, since_secs: u64, is_recording: bool) -> Li
     } else {
         ("■", Style::default().fg(Color::DarkGray))
     };
-    let since_text = format!("+ {}", mmss(since_secs));
     let clock_text = format!("{} {}", glyph, mmss(now_sec));
-    let used = since_text.chars().count() + clock_text.chars().count();
-    let pad = (width as usize).saturating_sub(used);
+    let since_text = format!("+{}", mmss(since_secs));
+    // Align the digit of "+MM:SS" with the digit of the take duration
+    // column in take_info_line: 2 ("▌ ") + NAME_WIDTH + 2 spaces. The
+    // "+" sits one column earlier so the digits line up.
+    let digit_col = 2 + NAME_WIDTH + 2;
+    let pad = (digit_col - 1).saturating_sub(clock_text.chars().count());
     Line::from(vec![
-        Span::styled(since_text, Style::default().fg(Color::DarkGray)),
-        Span::raw(" ".repeat(pad)),
         Span::styled(clock_text, clock_style),
+        Span::raw(" ".repeat(pad)),
+        Span::styled(since_text, Style::default().fg(Color::DarkGray)),
     ])
 }
 
