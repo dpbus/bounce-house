@@ -1,3 +1,6 @@
+use std::sync::LazyLock;
+
+use palette::{FromColor, Oklch, Srgb};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
@@ -22,17 +25,34 @@ pub const BAND_GREEN_DIM: Color = Color::Rgb(0, 80, 0);
 pub const BAND_YELLOW_DIM: Color = Color::Rgb(80, 80, 0);
 pub const BAND_RED_DIM: Color = Color::Rgb(80, 0, 0);
 
-pub const TAKE_COLORS: &[Color] = &[
-    Color::Rgb(60, 230, 80),
-    Color::Rgb(255, 220, 30),
-    Color::Rgb(255, 130, 30),
-    Color::Rgb(255, 60, 70),
-    Color::Rgb(195, 80, 220),
-    Color::Rgb(60, 175, 255),
-];
+/// Lightness and chroma in OkLCh — a perceptually uniform color space.
+/// At a fixed L, every hue reads at the same apparent brightness, so
+/// yellow won't pop louder than blue. Chroma past ~0.2 risks falling
+/// outside sRGB for some hues; 0.13 stays in gamut everywhere.
+const TAKE_COLOR_LIGHTNESS: f32 = 0.65;
+const TAKE_COLOR_CHROMA: f32 = 0.15;
 
+/// Golden angle: 360° × (1 − 1/φ²). Irrational, so stepping by it
+/// around the hue wheel never lands on a commensurable cycle — the
+/// sequence keeps subdividing forever and consecutive hues are always
+/// ~137.5° apart, well past any rainbow-progression feel.
+const TAKE_HUE_STRIDE_DEG: f32 = 137.50776;
+
+/// Per-session starting hue in degrees. Stable for the life of the
+/// process so take colors don't shift mid-session, but different each
+/// launch.
+static TAKE_HUE_START_DEG: LazyLock<f32> = LazyLock::new(|| rand::random::<f32>() * 360.0);
+
+/// Take colors are generated on the fly by stepping around the OkLCh
+/// hue wheel by `TAKE_HUE_STRIDE_DEG` per take. Constant adjacent
+/// contrast, perceptually uniform brightness, no curated palette to
+/// maintain.
 pub fn take_color(idx: usize) -> Color {
-    TAKE_COLORS[idx % TAKE_COLORS.len()]
+    let hue_deg =
+        (*TAKE_HUE_START_DEG + idx as f32 * TAKE_HUE_STRIDE_DEG).rem_euclid(360.0);
+    let oklch = Oklch::new(TAKE_COLOR_LIGHTNESS, TAKE_COLOR_CHROMA, hue_deg);
+    let rgb: Srgb<u8> = Srgb::from_color(oklch).into_format();
+    Color::Rgb(rgb.red, rgb.green, rgb.blue)
 }
 
 /// Braille spinner frame for the given tick. Advances every 6 ticks.
