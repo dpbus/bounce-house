@@ -95,7 +95,9 @@ impl Recording {
     }
 
     /// Seconds since the trailing marker, given the current absolute
-    /// engine sample.
+    /// engine sample. Only meaningful during active recording — after
+    /// stop the engine sample position keeps advancing but markers
+    /// don't.
     pub fn since_last_marker_secs(&self, current_abs_sample: u64) -> u64 {
         let last = self
             .timeline

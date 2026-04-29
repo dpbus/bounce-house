@@ -84,7 +84,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let naming_row = naming_row(view, recording, &layout);
     let bottom_row = naming_row.unwrap_or(layout.now_row);
 
-    let events = collect_events(recording, &layout);
+    let events = collect_events(recording, &layout, app.is_recording());
     let placed_events = bump_into_rows(events, bottom_row, recording, &layout);
 
     let mut grid: Vec<Line<'static>> = (0..panel_rows).map(|_| empty_row()).collect();
@@ -92,8 +92,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     fill_take_continuations(&mut grid, &placed_events, recording, &layout);
     render_in_progress_segment(&mut grid, view, &placed_events, recording, &layout, naming_row);
 
-    let since_secs = recording.since_last_marker_secs(app.engine.sample_position());
+    let since_secs = if app.is_recording() {
+        recording.since_last_marker_secs(app.engine.sample_position())
+    } else {
+        recording.elapsed_secs()
+    };
     grid[layout.now_row] = now_line(inner.width, layout.now_sec, since_secs, app.is_recording());
+
 
     frame.render_widget(Paragraph::new(grid), inner);
 }
@@ -117,7 +122,11 @@ fn naming_row(view: &View, recording: &Recording, layout: &TimelineLayout) -> Op
 /// Build the chronological list of events: takes anchored at their
 /// end_sample, plus unbound markers grouped by row so rapid-fire
 /// markers within one row's time bucket render as one counted line.
-fn collect_events(recording: &Recording, layout: &TimelineLayout) -> Vec<(u64, TimelineEvent)> {
+fn collect_events(
+    recording: &Recording,
+    layout: &TimelineLayout,
+    is_recording: bool,
+) -> Vec<(u64, TimelineEvent)> {
     let timeline = &recording.timeline;
     let mut events: Vec<(u64, TimelineEvent)> = Vec::new();
 
@@ -125,9 +134,21 @@ fn collect_events(recording: &Recording, layout: &TimelineLayout) -> Vec<(u64, T
         events.push((take.end_sample, TimelineEvent::Take { index: i }));
     }
 
+    // After stop, hide the auto-mark added by Recording::stop — it
+    // doesn't represent anything the user dropped, and the now line
+    // already shows the recording's end time.
+    let suppressed = if is_recording {
+        None
+    } else {
+        timeline.markers().last().map(|m| m.sample)
+    };
+
     let mut clusters_by_row: HashMap<usize, (u64, usize)> = HashMap::new();
     for marker in timeline.markers() {
         if timeline.is_marker_bound(marker.sample) {
+            continue;
+        }
+        if Some(marker.sample) == suppressed {
             continue;
         }
         let row = layout.row_for_sec(recording.secs_at(marker.sample));
@@ -352,7 +373,7 @@ fn older_rollup_line(hidden_count: usize) -> Line<'static> {
 }
 
 fn now_line(width: u16, now_sec: u64, since_secs: u64, is_recording: bool) -> Line<'static> {
-    let (glyph, style) = if is_recording {
+    let (glyph, clock_style) = if is_recording {
         (
             "●",
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
@@ -367,7 +388,7 @@ fn now_line(width: u16, now_sec: u64, since_secs: u64, is_recording: bool) -> Li
     Line::from(vec![
         Span::styled(since_text, Style::default().fg(Color::DarkGray)),
         Span::raw(" ".repeat(pad)),
-        Span::styled(clock_text, style),
+        Span::styled(clock_text, clock_style),
     ])
 }
 
