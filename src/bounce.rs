@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -106,6 +106,8 @@ fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
     if job.channel_files.is_empty() {
         return Err("no channel files".to_string());
     }
+    fs::create_dir_all(&job.bounces_dir)
+        .map_err(|e| format!("create dir {}: {}", job.bounces_dir.display(), e))?;
     let total = take_sample_count(&job.take)?;
 
     let (lufs, true_peak) = analyze_loudness(job, total)?;

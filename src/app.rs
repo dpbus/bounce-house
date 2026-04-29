@@ -151,6 +151,13 @@ impl App {
         if self.is_recording() {
             return Err(AppError::NotIdle);
         }
+        // If a recording already exists in this project (we stopped
+        // earlier), fork a fresh project so the new capture gets its
+        // own dir and timeline. Channels carry over; previous WAVs and
+        // bounces stay where they are on disk.
+        if self.project.recording.is_some() {
+            self.project = self.project.fork_for_new_recording(&self.settings);
+        }
         // Defensive: drop armed channels whose index is outside the engine's
         // real channel count. Production sessions never produce out-of-range
         // indices; the filter exists to keep DEBUG_CHANNELS-padded channels

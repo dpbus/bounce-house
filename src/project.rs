@@ -10,8 +10,9 @@ use crate::units::SampleRate;
 
 /// The body of work the user is creating: channels (with mix), the
 /// timeline of markers and takes, the on-disk paths where its audio
-/// lives, and the optional in-progress recording. One project per app
-/// invocation.
+/// lives, and the optional in-progress recording. Starting a new
+/// recording after one has stopped forks a fresh project (preserving
+/// channel state) so each capture gets its own dir and timeline.
 pub struct Project {
     pub name: String,
     /// Project root on disk (settings.projects_dir / name). Created
@@ -31,10 +32,27 @@ pub struct Project {
 
 impl Project {
     pub fn new(channel_count: u16, sample_rate: SampleRate, settings: &Settings) -> Self {
+        let channels = (0..channel_count).map(Channel::new).collect();
+        Self::with_channels(channels, sample_rate, settings)
+    }
+
+    /// New project carrying over the current channels (labels, arming,
+    /// mix) but with a fresh name, dir, bounces_dir, and timeline.
+    /// Called when starting another recording after one has stopped, so
+    /// the new capture doesn't collide with the previous one's files
+    /// or timeline.
+    pub fn fork_for_new_recording(&self, settings: &Settings) -> Self {
+        Self::with_channels(self.channels.clone(), self.sample_rate, settings)
+    }
+
+    fn with_channels(
+        channels: Vec<Channel>,
+        sample_rate: SampleRate,
+        settings: &Settings,
+    ) -> Self {
         let name = Local::now().format("%Y-%m-%d-%H%M%S").to_string();
         let dir = settings.projects_dir.join(&name);
         let bounces_dir = settings.bounces_dir.join(&name);
-        let channels = (0..channel_count).map(Channel::new).collect();
         Project {
             name,
             dir,
