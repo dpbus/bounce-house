@@ -64,7 +64,7 @@ fn body_lines() -> Vec<Line<'static>> {
     section(&mut lines, "App");
     entry(&mut lines, "W", "cycle waveform window");
     entry(&mut lines, ",", "settings");
-    entry(&mut lines, "Q", "quit");
+    entry(&mut lines, "Q / Esc", "quit");
     entry(&mut lines, "?", "open this help");
 
     lines

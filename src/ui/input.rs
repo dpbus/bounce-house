@@ -56,7 +56,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
         Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenSaveTemplate,
         Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenLoadTemplate,
         Char(',') => KeyAction::OpenSettings,
-        Char('q') | Char('Q') => KeyAction::OpenConfirmQuit,
+        Char('q') | Char('Q') | Esc => KeyAction::OpenConfirmQuit,
         Char('r') | Char('R') => KeyAction::StartRecording,
         Char('c') | Char('C') => KeyAction::OpenChannelPicker,
         Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
