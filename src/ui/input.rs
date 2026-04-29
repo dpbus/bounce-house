@@ -51,7 +51,7 @@ fn decide(app: &App, key: KeyEvent) -> KeyAction {
     }
     match key.code {
         Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenSaveTemplate,
-        Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenLoadTemplate,
+        Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenLoadTemplate,
         Char(',') => KeyAction::OpenSettings,
         Char('q') | Char('Q') => KeyAction::OpenConfirmQuit,
         Char('r') | Char('R') => KeyAction::StartRecording,

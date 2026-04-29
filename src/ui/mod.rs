@@ -1,5 +1,6 @@
 mod device_picker;
 mod footer;
+mod header;
 mod input;
 mod modals;
 mod panels;

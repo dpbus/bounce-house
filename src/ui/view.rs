@@ -6,13 +6,14 @@ use ratatui::widgets::{Block, Borders, Padding};
 use crate::app::App;
 use crate::ui::Action;
 use crate::ui::footer;
+use crate::ui::header;
 use crate::ui::input;
 use crate::ui::modals::ActiveModal;
-use crate::ui::panels::{meters, recording, session, timeline, waveform};
+use crate::ui::panels::{meters, timeline, waveform};
 use crate::ui::take_naming::TakeNaming;
 
-const TOP_BAR_HEIGHT: u16 = 12;
-const WAVEFORM_HEIGHT: u16 = 18;
+const HEADER_HEIGHT: u16 = 1;
+const WAVEFORM_HEIGHT: u16 = 22;
 const GAP: u16 = 1;
 const TIMELINE_WIDTH: u16 = 32;
 const TEMPLATE_FEEDBACK_SECS: i64 = 3;
@@ -118,49 +119,42 @@ impl View {
         let inner = block.inner(frame.area());
         frame.render_widget(block, frame.area());
 
-        // Split inner vertically: body fills, footer is the bottom
-        // line spanning the entire width (incl. under the timeline).
-        let body_and_footer = Layout::default()
+        // Header and footer span full inner width; the body in between
+        // splits horizontally so the timeline panel pins to the right.
+        let outer_v = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(HEADER_HEIGHT),
+                Constraint::Length(GAP),
                 Constraint::Fill(1),
                 Constraint::Length(GAP),
                 Constraint::Length(1),
             ])
             .split(inner);
-        let body = body_and_footer[0];
-        let footer_area = body_and_footer[2];
+        let header_area = outer_v[0];
+        let body = outer_v[2];
+        let footer_area = outer_v[4];
 
-        // Body splits horizontally: main area on the left, timeline
-        // panel pinned to the right edge.
-        let h_chunks = Layout::default()
+        let body_h = Layout::default()
             .direction(Direction::Horizontal)
+            .spacing(1)
             .constraints([Constraint::Fill(1), Constraint::Length(TIMELINE_WIDTH)])
             .split(body);
-        let main = h_chunks[0];
+        let main = body_h[0];
 
-        let chunks = Layout::default()
+        let main_v = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(TOP_BAR_HEIGHT),
-                Constraint::Length(GAP),
                 Constraint::Length(WAVEFORM_HEIGHT),
                 Constraint::Length(GAP),
                 Constraint::Fill(1),
             ])
             .split(main);
 
-        let top_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .spacing(2)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[0]);
-
-        session::draw(frame, top_chunks[0], app, self);
-        recording::draw(frame, top_chunks[1], app);
-        waveform::draw(frame, chunks[2], app);
-        meters::draw(frame, chunks[4], app);
-        timeline::draw(frame, h_chunks[1], app, self);
+        header::draw(frame, header_area, app, self);
+        waveform::draw(frame, main_v[0], app);
+        meters::draw(frame, main_v[2], app);
+        timeline::draw(frame, body_h[1], app, self);
         footer::draw(frame, footer_area, app, self);
 
         if let Some(modal) = &self.active_modal {

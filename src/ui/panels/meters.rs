@@ -1,14 +1,22 @@
 use ratatui::prelude::*;
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 use crate::app::App;
 use crate::channel::Channel;
-use crate::ui::widgets::{panel, vertical_meter};
+use crate::ui::widgets::vertical_meter;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let inner = panel(frame, area, "Meters", None, None);
-
     let armed: Vec<&Channel> = app.session.armed().collect();
+    let total = app.engine.channel_count();
+    let title = format!(" Meters — {}/{} armed ", armed.len(), total);
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .padding(Padding::new(2, 2, 1, 1))
+        .border_style(Style::default().fg(Color::DarkGray));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
     if armed.is_empty() {
         let msg = Paragraph::new(Line::from(vec![
             Span::styled("No channels armed.  ", Style::default().fg(Color::DarkGray)),

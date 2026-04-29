@@ -5,38 +5,11 @@ use crate::app::App;
 use crate::ui::view::View;
 use crate::ui::widgets::{key_hint, key_hint_when};
 
-/// `[,] settings` — width reserved on the right of the footer.
-const SETTINGS_HINT_WIDTH: u16 = 12;
-
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Fill(1),
-            Constraint::Length(SETTINGS_HINT_WIDTH),
-        ])
-        .split(area);
-    frame.render_widget(Paragraph::new(left(app, view)), chunks[0]);
-    let settings_spans = key_hint_when(
-        settings_available(app, view),
-        ",",
-        "settings",
-        Color::Cyan,
-    );
-    frame.render_widget(
-        Paragraph::new(Line::from(settings_spans)).right_aligned(),
-        chunks[1],
-    );
+    frame.render_widget(Paragraph::new(line(app, view)), area);
 }
 
-fn settings_available(app: &App, view: &View) -> bool {
-    !app.is_recording()
-        && view.take_naming().is_none()
-        && !view.confirm_stop_active()
-        && !view.confirm_quit_active()
-}
-
-fn left(app: &App, view: &View) -> Line<'static> {
+fn line(app: &App, view: &View) -> Line<'static> {
     if view.take_naming().is_some() {
         return Line::from(Span::styled(
             "Naming take",
