@@ -22,42 +22,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
 }
 
 fn status_line(app: &App) -> Line<'static> {
-    let mut spans = state_spans(app);
-    spans.extend(separator());
-    spans.extend(session_duration_spans(app));
+    let mut spans = session_duration_spans(app);
     if let Some(folder) = recording_folder(app) {
         spans.extend(separator());
         spans.push(Span::raw(folder));
     }
     Line::from(spans)
-}
-
-fn state_spans(app: &App) -> Vec<Span<'static>> {
-    let Some(rec) = &app.recording else {
-        return vec![Span::styled(
-            "○ Idle",
-            Style::default().fg(Color::DarkGray),
-        )];
-    };
-    let elapsed = rec.elapsed_secs();
-    if app.is_recording() {
-        let since = rec.since_last_marker_secs(app.engine.sample_position(), app.engine.sample_rate());
-        vec![
-            Span::styled(
-                format!("● {:02}:{:02}", elapsed / 60, elapsed % 60),
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!("  ▌ {:02}:{:02}", since / 60, since % 60),
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]
-    } else {
-        vec![Span::styled(
-            format!("■ {:02}:{:02}", elapsed / 60, elapsed % 60),
-            Style::default().fg(Color::DarkGray),
-        )]
-    }
 }
 
 fn separator() -> Vec<Span<'static>> {

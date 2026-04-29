@@ -27,6 +27,10 @@ pub struct Take {
     pub bounce_status: BounceStatus,
 }
 
+/// Marker/take structure laid down against a recording, in
+/// recording-relative samples. Time math (sample → seconds) lives on
+/// Recording, which owns the sample rate; Timeline only knows about the
+/// shape of what's been captured.
 #[derive(Default)]
 pub struct Timeline {
     markers: Vec<Marker>,
@@ -43,8 +47,14 @@ impl Timeline {
     pub fn markers(&self) -> &[Marker] {
         &self.markers
     }
+
     pub fn takes(&self) -> &[Take] {
         &self.takes
+    }
+
+    /// Color index the next take will be assigned.
+    pub fn next_take_color(&self) -> u8 {
+        self.next_color
     }
 
     pub fn mark(&mut self, sample: u64) {
@@ -113,5 +123,9 @@ impl Timeline {
             .find(|t| t.end_sample == sample)
             .or_else(|| self.takes.iter().find(|t| t.start_sample == sample))
             .map(|t| t.color_index)
+    }
+
+    pub fn is_marker_bound(&self, sample: u64) -> bool {
+        self.marker_color_index(sample).is_some()
     }
 }

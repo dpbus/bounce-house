@@ -344,6 +344,10 @@ pub fn input_with_cursor(input: &TextInput, base: Style) -> Vec<Span<'static>> {
     spans
 }
 
+pub fn mmss(secs: u64) -> String {
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
 pub fn truncate_with_ellipsis(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();

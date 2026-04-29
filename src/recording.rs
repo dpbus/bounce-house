@@ -15,6 +15,7 @@ pub struct Recording {
     /// Absolute engine sample at the moment recording started. All marker
     /// and take samples are stored relative to this.
     pub start_sample: u64,
+    pub sample_rate: SampleRate,
     pub channel_files: Vec<PathBuf>,
     pub timeline: Timeline,
     writer: Option<DiskWriter>,
@@ -43,6 +44,7 @@ impl Recording {
             stopped_at: None,
             output_dir,
             start_sample,
+            sample_rate,
             channel_files,
             timeline: Timeline::new(),
             writer: Some(writer),
@@ -83,11 +85,25 @@ impl Recording {
         (end - self.started_at).num_seconds().max(0) as u64
     }
 
-    /// Seconds since the trailing marker, in absolute-engine-sample
-    /// terms. Returns 0 when there are no markers yet.
-    pub fn since_last_marker_secs(&self, current_abs_sample: u64, sample_rate: SampleRate) -> u64 {
-        let last_marker = self.timeline.markers().last().map(|m| m.sample).unwrap_or(0);
-        let elapsed_samples = current_abs_sample.saturating_sub(self.start_sample);
-        elapsed_samples.saturating_sub(last_marker) / sample_rate.0 as u64
+    /// Convert a recording-relative sample to seconds.
+    pub fn secs_at(&self, sample: u64) -> u64 {
+        sample / (self.sample_rate.0 as u64).max(1)
+    }
+
+    pub fn duration_secs(&self, start_sample: u64, end_sample: u64) -> u64 {
+        self.secs_at(end_sample.saturating_sub(start_sample))
+    }
+
+    /// Seconds since the trailing marker, given the current absolute
+    /// engine sample.
+    pub fn since_last_marker_secs(&self, current_abs_sample: u64) -> u64 {
+        let last = self
+            .timeline
+            .markers()
+            .last()
+            .map(|m| m.sample)
+            .unwrap_or(0);
+        let rel = current_abs_sample.saturating_sub(self.start_sample);
+        self.secs_at(rel.saturating_sub(last))
     }
 }
