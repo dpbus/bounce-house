@@ -51,19 +51,16 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     );
     let amps = waveform_amps(&app.level_history, &layout);
     let marker_columns: Vec<(Option<u8>, usize)> = app
-        .recording
-        .as_ref()
-        .map(|r| {
-            r.timeline
-                .markers()
-                .iter()
-                .filter_map(|m| {
-                    let col = layout.sample_to_column(r.start_sample + m.sample)?;
-                    Some((r.timeline.marker_color_index(m.sample), col))
-                })
-                .collect()
+        .project
+        .timeline
+        .markers()
+        .iter()
+        .filter_map(|m| {
+            let abs = app.project.relative_to_absolute(m.sample)?;
+            let col = layout.sample_to_column(abs)?;
+            Some((app.project.timeline.marker_color_index(m.sample), col))
         })
-        .unwrap_or_default();
+        .collect();
     let (warn, clip) = band_thresholds();
     let (warn, clip) = (warn as f64, clip as f64);
     // 1 braille pixel of vertical extent so the centerline stays visible

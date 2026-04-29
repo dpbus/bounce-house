@@ -6,9 +6,9 @@ use crate::channel::Channel;
 use crate::ui::widgets::vertical_meter;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let armed: Vec<&Channel> = app.session.armed().collect();
+    let armed_channels: Vec<&Channel> = app.project.armed_channels().collect();
     let total = app.engine.channel_count();
-    let title = format!(" Meters — {}/{} armed ", armed.len(), total);
+    let title = format!(" Meters — {}/{} armed ", armed_channels.len(), total);
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
@@ -17,7 +17,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if armed.is_empty() {
+    if armed_channels.is_empty() {
         let msg = Paragraph::new(Line::from(vec![
             Span::styled("No channels armed.  ", Style::default().fg(Color::DarkGray)),
             Span::styled("[C]", Style::default().fg(Color::Cyan)),
@@ -28,7 +28,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let n = armed.len();
+    let n = armed_channels.len();
     let strips = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Ratio(1, n as u32); n])
@@ -36,7 +36,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
 
     let meter_width = compute_meter_width(strips[0].width);
 
-    for (i, channel) in armed.iter().enumerate() {
+    for (i, channel) in armed_channels.iter().enumerate() {
         channel_strip(frame, strips[i], channel, app, meter_width);
     }
 }

@@ -35,7 +35,7 @@ fn separator() -> Vec<Span<'static>> {
 }
 
 fn session_duration_spans(app: &App) -> Vec<Span<'static>> {
-    let secs = (Local::now() - app.session.started_at)
+    let secs = (Local::now() - app.started_at)
         .num_seconds()
         .max(0) as u64;
     vec![
@@ -50,10 +50,10 @@ fn session_duration_spans(app: &App) -> Vec<Span<'static>> {
 }
 
 fn recording_folder(app: &App) -> Option<String> {
-    app.recording
+    app.project
+        .recording
         .as_ref()
-        .and_then(|r| r.output_dir.file_name())
-        .map(|n| n.to_string_lossy().into_owned())
+        .map(|_| app.project.name.clone())
 }
 
 fn flash_line(view: &View) -> Option<Line<'static>> {

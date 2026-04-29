@@ -5,7 +5,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use crate::app::App;
-use crate::recording::Recording;
+use crate::project::Project;
 use crate::timeline::{BounceStatus, Take};
 use crate::ui::view::View;
 use crate::ui::widgets::{
@@ -67,10 +67,11 @@ impl TimelineLayout {
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let inner = panel(frame, area, "Timeline", None, naming_hint(view));
 
-    let Some(recording) = &app.recording else {
+    let project = &app.project;
+    if project.recording.is_none() {
         frame.render_widget(Paragraph::new(dim_status("No recording")), inner);
         return;
-    };
+    }
 
     let panel_rows = inner.height as usize;
     if panel_rows == 0 {
@@ -78,34 +79,34 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     }
 
     let is_recording = app.is_recording();
-    let layout = TimelineLayout::new(recording.elapsed_secs(), panel_rows);
-    let naming_row = naming_row(view, recording, &layout);
+    let layout = TimelineLayout::new(project.elapsed_secs(), panel_rows);
+    let naming_row = naming_row(view, project, &layout);
     let bottom_row = naming_row.unwrap_or(layout.now_row);
 
-    let events = collect_events(recording, &layout, is_recording);
-    let (placed_events, overflow_boundary) = bump_into_rows(events, bottom_row, recording, &layout);
+    let events = collect_events(project, &layout, is_recording);
+    let (placed_events, overflow_boundary) = bump_into_rows(events, bottom_row, project, &layout);
 
     let mut grid: Vec<Line<'static>> = (0..panel_rows).map(|_| empty_row()).collect();
-    render_events(&mut grid, &placed_events, recording, app.total_ticks);
-    fill_take_continuations(&mut grid, &placed_events, recording, &layout);
-    render_in_progress_segment(&mut grid, view, &placed_events, recording, &layout, naming_row);
+    render_events(&mut grid, &placed_events, project, app.total_ticks);
+    fill_take_continuations(&mut grid, &placed_events, project, &layout);
+    render_in_progress_segment(&mut grid, view, &placed_events, project, &layout, naming_row);
 
     // Recording-start indicator travels up with the proportional scale
     // and anchors at row 0 past MIN_TIMELINE_SECS. Painted after the
     // continuations so it survives any take block crossing its row.
     let start_row = layout.row_for_sec(0);
     if naming_row != Some(start_row) {
-        grid[start_row] = recording_start_line(recording_start_color(recording, view));
+        grid[start_row] = recording_start_line(recording_start_color(project, view));
     }
 
     // Overflow boundary takes row 0 — its presence means the recording
     // start has scrolled off into the hidden range above.
     if let Some(boundary) = overflow_boundary {
-        grid[0] = view_top_boundary_line(recording.secs_at(boundary));
+        grid[0] = view_top_boundary_line(project.secs_at(boundary));
     }
 
     let since_secs = if is_recording {
-        recording.since_last_marker_secs(app.engine.sample_position())
+        project.since_last_marker_secs(app.engine.sample_position())
     } else {
         0
     };
@@ -117,15 +118,15 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
 /// Row where the take-name input lives — the trailing marker's row,
 /// capped one above the now line so a freshly-dropped marker can't
 /// collide with the clock.
-fn naming_row(view: &View, recording: &Recording, layout: &TimelineLayout) -> Option<usize> {
+fn naming_row(view: &View, project: &Project, layout: &TimelineLayout) -> Option<usize> {
     view.take_naming().map(|_| {
-        let trailing_sample = recording
+        let trailing_sample = project
             .timeline
             .markers()
             .last()
             .map(|m| m.sample)
             .unwrap_or(0);
-        let trailing_row = layout.row_for_sec(recording.secs_at(trailing_sample));
+        let trailing_row = layout.row_for_sec(project.secs_at(trailing_sample));
         trailing_row.min(layout.now_row.saturating_sub(1))
     })
 }
@@ -134,11 +135,11 @@ fn naming_row(view: &View, recording: &Recording, layout: &TimelineLayout) -> Op
 /// end_sample, plus unbound markers grouped by row so rapid-fire
 /// markers within one row's time bucket render as one counted line.
 fn collect_events(
-    recording: &Recording,
+    project: &Project,
     layout: &TimelineLayout,
     is_recording: bool,
 ) -> Vec<(u64, TimelineEvent)> {
-    let timeline = &recording.timeline;
+    let timeline = &project.timeline;
     let mut events: Vec<(u64, TimelineEvent)> = Vec::new();
 
     for (i, take) in timeline.takes().iter().enumerate() {
@@ -167,7 +168,7 @@ fn collect_events(
         if Some(marker.sample) == suppressed {
             continue;
         }
-        let row = layout.row_for_sec(recording.secs_at(marker.sample));
+        let row = layout.row_for_sec(project.secs_at(marker.sample));
         clusters_by_row
             .entry(row)
             .and_modify(|(_, count)| *count += 1)
@@ -192,7 +193,7 @@ fn collect_events(
 fn bump_into_rows(
     events: Vec<(u64, TimelineEvent)>,
     bottom_row: usize,
-    recording: &Recording,
+    project: &Project,
     layout: &TimelineLayout,
 ) -> (Vec<PlacedEvent>, Option<u64>) {
     let total_events = events.len();
@@ -202,7 +203,7 @@ fn bump_into_rows(
         if next_free_row == 0 {
             break;
         }
-        let proportional_row = layout.row_for_sec(recording.secs_at(*sample));
+        let proportional_row = layout.row_for_sec(project.secs_at(*sample));
         let row = proportional_row.min(next_free_row - 1);
         placed.push(PlacedEvent {
             row,
@@ -225,19 +226,19 @@ fn bump_into_rows(
 fn render_events(
     grid: &mut [Line<'static>],
     placed_events: &[PlacedEvent],
-    recording: &Recording,
+    project: &Project,
     total_ticks: u64,
 ) {
-    let takes = recording.timeline.takes();
+    let takes = project.timeline.takes();
     for placed in placed_events {
         match placed.event {
             TimelineEvent::Take { index } => {
                 let take = &takes[index];
-                let dur_secs = recording.duration_secs(take.start_sample, take.end_sample);
+                let dur_secs = project.duration_secs(take.start_sample, take.end_sample);
                 grid[placed.row] = take_info_line(take, dur_secs, total_ticks);
             }
             TimelineEvent::MarkerCluster { marker_count } => {
-                let secs = recording.secs_at(placed.anchor_sample);
+                let secs = project.secs_at(placed.anchor_sample);
                 grid[placed.row] = marker_line(secs, marker_count);
             }
         }
@@ -249,16 +250,16 @@ fn render_events(
 fn fill_take_continuations(
     grid: &mut [Line<'static>],
     placed_events: &[PlacedEvent],
-    recording: &Recording,
+    project: &Project,
     layout: &TimelineLayout,
 ) {
-    let takes = recording.timeline.takes();
+    let takes = project.timeline.takes();
     for (i, placed) in placed_events.iter().enumerate() {
         let TimelineEvent::Take { index } = placed.event else {
             continue;
         };
         let take = &takes[index];
-        let start_row = layout.row_for_sec(recording.secs_at(take.start_sample));
+        let start_row = layout.row_for_sec(project.secs_at(take.start_sample));
         let prev_floor = if i == 0 {
             0
         } else {
@@ -278,15 +279,15 @@ fn render_in_progress_segment(
     grid: &mut [Line<'static>],
     view: &View,
     placed_events: &[PlacedEvent],
-    recording: &Recording,
+    project: &Project,
     layout: &TimelineLayout,
     naming_row: Option<usize>,
 ) {
     let Some(naming_row) = naming_row else {
         return;
     };
-    let color = take_color(recording.timeline.next_take_color() as usize);
-    for r in in_progress_fill_range(placed_events, recording, layout, naming_row) {
+    let color = take_color(project.timeline.next_take_color() as usize);
+    for r in in_progress_fill_range(placed_events, project, layout, naming_row) {
         grid[r] = continuation_line(color);
     }
     if let Some(overlay) = view.take_naming() {
@@ -303,12 +304,12 @@ fn render_in_progress_segment(
 /// about to absorb that span.
 fn in_progress_fill_range(
     placed_events: &[PlacedEvent],
-    recording: &Recording,
+    project: &Project,
     layout: &TimelineLayout,
     naming_row: usize,
 ) -> Range<usize> {
-    let prev_sample = second_to_last_marker_sample(recording);
-    let prev_natural_row = layout.row_for_sec(recording.secs_at(prev_sample));
+    let prev_sample = second_to_last_marker_sample(project);
+    let prev_natural_row = layout.row_for_sec(project.secs_at(prev_sample));
     let prev_placed_row = placed_row_for(placed_events, prev_sample, prev_natural_row);
     let committed_take_floor = placed_events
         .iter()
@@ -372,12 +373,12 @@ fn marker_line(secs: u64, count: usize) -> Line<'static> {
 /// Color for the `0:00` glyph: matches the take that starts at sample
 /// 0 if any, the in-progress take's color while naming one that begins
 /// at recording start, else `None` for a neutral dot.
-fn recording_start_color(recording: &Recording, view: &View) -> Option<Color> {
-    if view.take_naming().is_some() && second_to_last_marker_sample(recording) == 0 {
-        return Some(take_color(recording.timeline.next_take_color() as usize));
+fn recording_start_color(project: &Project, view: &View) -> Option<Color> {
+    let timeline = &project.timeline;
+    if view.take_naming().is_some() && second_to_last_marker_sample(project) == 0 {
+        return Some(take_color(timeline.next_take_color() as usize));
     }
-    recording
-        .timeline
+    timeline
         .marker_color_index(0)
         .map(|i| take_color(i as usize))
 }
@@ -385,8 +386,8 @@ fn recording_start_color(recording: &Recording, view: &View) -> Option<Color> {
 /// Sample of the marker before the trailing one — i.e., the start of
 /// the span the user is naming or about to name. Defaults to 0 when
 /// fewer than two markers exist.
-fn second_to_last_marker_sample(recording: &Recording) -> u64 {
-    recording
+fn second_to_last_marker_sample(project: &Project) -> u64 {
+    project
         .timeline
         .markers()
         .iter()

@@ -49,7 +49,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
         spans.extend(key_hint("Esc", "stop", Color::Cyan));
     } else {
         spans.extend(key_hint_when(
-            app.session.armed().next().is_some(),
+            app.project.armed_channels().next().is_some(),
             "R",
             "record  ",
             Color::Cyan,

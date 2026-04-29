@@ -4,9 +4,9 @@ mod bounce;
 mod channel;
 #[cfg(debug_assertions)]
 mod debug;
+mod project;
 mod recording;
 mod sanitize;
-mod session;
 mod settings;
 mod template;
 mod timeline;

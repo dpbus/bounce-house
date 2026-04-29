@@ -31,10 +31,11 @@ const SILENCE_LUFS_FLOOR: f64 = -70.0;
 pub struct BounceJob {
     pub take: Take,
     pub sample_rate: SampleRate,
-    pub output_dir: PathBuf,
-    /// Prepended to the take name so bounces from different recordings
-    /// don't collide in a shared `bounces_dir`.
-    pub recording_timestamp: String,
+    pub bounces_dir: PathBuf,
+    /// Prepended to the take's filename when present — used in flat
+    /// layouts where multiple projects share one bounces dir. None for
+    /// nested layouts where `bounces_dir` is already project-specific.
+    pub filename_prefix: Option<String>,
     pub channel_files: Vec<PathBuf>,
     /// `None` if the recording has already stopped (file is finalized,
     /// immediately readable). `Some` while live; bouncer waits on it.
@@ -112,7 +113,7 @@ fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
 
     let readers = open_channel_readers(&job.channel_files, job.take.start_sample)?;
     let mut encoder = build_encoder(job.sample_rate)?;
-    let path = unique_mp3_path(&job.output_dir, &job.recording_timestamp, &job.take.name);
+    let path = unique_mp3_path(&job.bounces_dir, job.filename_prefix.as_deref(), &job.take.name);
     let mut out_file =
         File::create(&path).map_err(|e| format!("create {}: {}", path.display(), e))?;
 
@@ -315,19 +316,23 @@ fn encode_tail(
         .map_err(|e| format!("write tail: {}", e))
 }
 
-fn unique_mp3_path(dir: &Path, prefix: &str, take_name: &str) -> PathBuf {
+fn unique_mp3_path(dir: &Path, prefix: Option<&str>, take_name: &str) -> PathBuf {
     let trimmed = take_name.trim();
     let safe = if trimmed.is_empty() {
         "take".to_string()
     } else {
         crate::sanitize::filename_safe(trimmed)
     };
-    let base = dir.join(format!("{}_{}.mp3", prefix, safe));
+    let stem = match prefix {
+        Some(p) if !p.is_empty() => format!("{}_{}", p, safe),
+        _ => safe,
+    };
+    let base = dir.join(format!("{}.mp3", stem));
     if !base.exists() {
         return base;
     }
     for n in 2.. {
-        let candidate = dir.join(format!("{}_{}-{}.mp3", prefix, safe, n));
+        let candidate = dir.join(format!("{}-{}.mp3", stem, n));
         if !candidate.exists() {
             return candidate;
         }
