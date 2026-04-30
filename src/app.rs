@@ -106,14 +106,13 @@ impl App {
         let updates = self.bounce_pool.drain_updates();
         for update in updates {
             self.session
-                .timeline
                 .set_bounce_status(update.take_id, update.status);
         }
     }
 
     /// Drains observations into both meter decay state and waveform history.
     fn drain_level_observations(&mut self) {
-        let n_channels = self.session.channels.len();
+        let n_channels = self.session.channels().len();
         if self.tick_peaks.len() < n_channels {
             self.tick_peaks.resize(n_channels, 0.0);
         }
@@ -122,7 +121,7 @@ impl App {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
                 self.tick_peaks[i] = self.tick_peaks[i].max(peak);
-                if self.session.channels[i].armed {
+                if self.session.channels()[i].armed {
                     combined = combined.max(peak);
                 }
             }
@@ -186,7 +185,7 @@ impl App {
 
     pub fn drop_marker(&mut self) {
         if let Some(rel) = self.rel_sample_position() {
-            self.session.timeline.mark(rel);
+            self.session.drop_marker(rel);
         }
     }
 
@@ -194,11 +193,11 @@ impl App {
         if !self.is_recording() {
             return;
         }
-        self.session.timeline.delete_last_marker();
+        self.session.delete_last_marker();
     }
 
     pub fn has_unbound_marker(&self) -> bool {
-        self.session.timeline.last_marker_unbound()
+        self.session.last_marker_unbound()
     }
 
     /// Promotes the trailing unbound marker into a named take and
@@ -212,26 +211,23 @@ impl App {
         let Some(capture) = &self.capture else {
             return;
         };
-        if !self.session.timeline.create_take(trimmed) {
+        let Some(take) = self.session.create_take(trimmed) else {
             return;
-        }
-        let take = self.session.timeline.takes().last().cloned();
+        };
         let recording = self
             .session
             .recording
             .as_ref()
             .expect("recording exists while capturing");
-        let job = take.map(|take| BounceJob {
+        let job = BounceJob {
             take,
             sample_rate: self.session.sample_rate(),
             bounces_dir: self.session.bounces_dir.clone(),
             filename_prefix: self.session.bounces_filename_prefix.clone(),
             channel_files: recording.channel_files.clone(),
             flushed_samples: Some(capture.flushed_samples()),
-        });
-        if let Some(job) = job {
-            self.bounce_pool.dispatch(job);
-        }
+        };
+        self.bounce_pool.dispatch(job);
     }
 
     pub fn save_template(&mut self, name: &str) -> io::Result<()> {
@@ -239,7 +235,7 @@ impl App {
         let template = Template {
             name: name.to_string(),
             device_name: self.engine.device_name().to_string(),
-            channels: self.session.channels.clone(),
+            channels: self.session.channels().to_vec(),
         };
         template.save(&path)
     }
@@ -255,10 +251,10 @@ impl App {
     /// template keep their fresh defaults.
     pub fn load_template(&mut self, template: &Template) {
         for tmpl_channel in &template.channels {
-            if let Some(channel) = self.session.channel_mut(tmpl_channel.index) {
-                channel.label = tmpl_channel.label.clone();
-                channel.armed = tmpl_channel.armed;
-            }
+            self.session
+                .set_channel_label(tmpl_channel.index, tmpl_channel.label.clone());
+            self.session
+                .set_channel_armed(tmpl_channel.index, tmpl_channel.armed);
         }
     }
 
@@ -266,14 +262,10 @@ impl App {
         if self.is_recording() {
             return;
         }
-        if let Some(channel) = self.session.channel_mut(channel_index) {
-            channel.armed = !channel.armed;
-        }
+        self.session.toggle_channel_armed(channel_index);
     }
 
     pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
-        if let Some(channel) = self.session.channel_mut(channel_index) {
-            channel.label = label;
-        }
+        self.session.set_channel_label(channel_index, label);
     }
 }

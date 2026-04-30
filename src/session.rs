@@ -5,7 +5,7 @@ use chrono::Local;
 use crate::channel::Channel;
 use crate::recording::Recording;
 use crate::settings::Settings;
-use crate::timeline::Timeline;
+use crate::timeline::{BounceStatus, Take, Timeline};
 use crate::units::SampleRate;
 
 /// A single recording session: channels (with mix), the timeline of
@@ -13,6 +13,10 @@ use crate::units::SampleRate;
 /// optional in-progress recording. Starting a new recording after one
 /// has stopped forks a fresh session (preserving channel state) so each
 /// capture gets its own dir and timeline.
+///
+/// All mutations to channels and the timeline route through Session
+/// methods so a future persistence hook has a single chokepoint to fire
+/// from. Direct field access from outside the module is read-only.
 pub struct Session {
     pub name: String,
     /// Session root on disk (settings.sessions_dir / name). Created
@@ -24,9 +28,9 @@ pub struct Session {
     /// prepended to each filename for a flat layout.
     pub bounces_dir: PathBuf,
     pub bounces_filename_prefix: Option<String>,
-    pub channels: Vec<Channel>,
-    pub timeline: Timeline,
     pub recording: Option<Recording>,
+    channels: Vec<Channel>,
+    timeline: Timeline,
 }
 
 impl Session {
@@ -59,16 +63,63 @@ impl Session {
         }
     }
 
+    pub fn channels(&self) -> &[Channel] {
+        &self.channels
+    }
+
+    pub fn timeline(&self) -> &Timeline {
+        &self.timeline
+    }
+
     pub fn sample_rate(&self) -> SampleRate {
         self.timeline.sample_rate()
     }
 
-    pub fn channel_mut(&mut self, index: u16) -> Option<&mut Channel> {
-        self.channels.get_mut(index as usize)
-    }
-
     pub fn armed_channels(&self) -> impl Iterator<Item = &Channel> + '_ {
         self.channels.iter().filter(|c| c.armed)
+    }
+
+    pub fn last_marker_unbound(&self) -> bool {
+        self.timeline.last_marker_unbound()
+    }
+
+    pub fn set_channel_label(&mut self, index: u16, label: Option<String>) {
+        if let Some(channel) = self.channels.get_mut(index as usize) {
+            channel.label = label;
+        }
+    }
+
+    pub fn set_channel_armed(&mut self, index: u16, armed: bool) {
+        if let Some(channel) = self.channels.get_mut(index as usize) {
+            channel.armed = armed;
+        }
+    }
+
+    pub fn toggle_channel_armed(&mut self, index: u16) {
+        if let Some(channel) = self.channels.get_mut(index as usize) {
+            channel.armed = !channel.armed;
+        }
+    }
+
+    pub fn drop_marker(&mut self, sample: u64) {
+        self.timeline.mark(sample);
+    }
+
+    pub fn delete_last_marker(&mut self) -> bool {
+        self.timeline.delete_last_marker()
+    }
+
+    /// Promotes the trailing unbound marker into a named take. Returns
+    /// the new take by value, or None if there's no unbound marker.
+    pub fn create_take(&mut self, name: String) -> Option<Take> {
+        if !self.timeline.create_take(name) {
+            return None;
+        }
+        self.timeline.takes().last().cloned()
+    }
+
+    pub fn set_bounce_status(&mut self, take_id: u32, status: BounceStatus) {
+        self.timeline.set_bounce_status(take_id, status);
     }
 
     pub fn start_recording(&mut self, channel_files: Vec<PathBuf>) {
@@ -94,6 +145,13 @@ impl Session {
             .as_ref()
             .map(|r| r.elapsed_secs())
             .unwrap_or(0)
+    }
+
+    /// Debug-only escape hatch for padding the session with synthetic
+    /// channels for visual UI testing. See `crate::debug`.
+    #[cfg(debug_assertions)]
+    pub fn debug_push_channel(&mut self, channel: Channel) {
+        self.channels.push(channel);
     }
 }
 
@@ -157,21 +215,39 @@ mod tests {
     }
 
     #[test]
-    fn channel_mut_returns_some_for_valid_index() {
+    fn set_channel_label_updates_only_the_indexed_channel() {
         let dir = tempdir().unwrap();
         let mut session = Session::new(3, SampleRate(48_000), &settings_in(dir.path()));
-        assert!(session.channel_mut(0).is_some());
-        assert!(session.channel_mut(2).is_some());
-        assert!(session.channel_mut(3).is_none());
-        assert!(session.channel_mut(99).is_none());
+        session.set_channel_label(1, Some("Snare".into()));
+        assert_eq!(session.channels()[1].label.as_deref(), Some("Snare"));
+        assert!(session.channels()[0].label.is_none());
+        assert!(session.channels()[2].label.is_none());
+    }
+
+    #[test]
+    fn set_channel_armed_out_of_range_is_silent() {
+        let dir = tempdir().unwrap();
+        let mut session = Session::new(2, SampleRate(48_000), &settings_in(dir.path()));
+        session.set_channel_armed(99, true);
+        assert!(session.channels().iter().all(|c| !c.armed));
+    }
+
+    #[test]
+    fn toggle_channel_armed_flips_state() {
+        let dir = tempdir().unwrap();
+        let mut session = Session::new(2, SampleRate(48_000), &settings_in(dir.path()));
+        session.toggle_channel_armed(0);
+        assert!(session.channels()[0].armed);
+        session.toggle_channel_armed(0);
+        assert!(!session.channels()[0].armed);
     }
 
     #[test]
     fn armed_channels_filters_to_armed_only() {
         let dir = tempdir().unwrap();
         let mut session = Session::new(4, SampleRate(48_000), &settings_in(dir.path()));
-        session.channels[0].armed = true;
-        session.channels[2].armed = true;
+        session.set_channel_armed(0, true);
+        session.set_channel_armed(2, true);
 
         let armed: Vec<u16> = session.armed_channels().map(|c| c.index).collect();
         assert_eq!(armed, vec![0, 2]);
@@ -246,8 +322,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let settings = settings_in(dir.path());
         let mut original = Session::new(3, SampleRate(96_000), &settings);
-        original.channels[1].armed = true;
-        original.channels[1].label = Some("Snare".into());
+        original.set_channel_armed(1, true);
+        original.set_channel_label(1, Some("Snare".into()));
 
         let forked = original.fork_for_new_recording(&settings);
         assert_eq!(forked.sample_rate(), SampleRate(96_000));

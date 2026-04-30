@@ -52,13 +52,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let amps = waveform_amps(&app.level_history, &layout);
     let marker_columns: Vec<(Option<u8>, usize)> = app
         .session
-        .timeline
+        .timeline()
         .markers()
         .iter()
         .filter_map(|m| {
             let abs = app.relative_to_absolute(m.sample)?;
             let col = layout.sample_to_column(abs)?;
-            Some((app.session.timeline.marker_color_index(m.sample), col))
+            Some((app.session.timeline().marker_color_index(m.sample), col))
         })
         .collect();
     let (warn, clip) = band_thresholds();

@@ -77,7 +77,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         return;
     }
 
-    let timeline = &session.timeline;
+    let timeline = session.timeline();
     let is_recording = app.is_recording();
     let layout = TimelineLayout::new(session.elapsed_secs(), panel_rows);
     let naming_row = naming_row(view, timeline, &layout);

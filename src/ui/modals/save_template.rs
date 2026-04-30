@@ -62,7 +62,7 @@ impl SaveTemplateModal {
     }
 
     pub fn draw(&self, frame: &mut Frame, app: &App) {
-        let n_channels = app.session.channels.len() as u16;
+        let n_channels = app.session.channels().len() as u16;
         let layout = pick_layout(n_channels);
         let inner = modal(frame, "Save Template", layout.width, layout.height);
 
@@ -83,7 +83,7 @@ impl SaveTemplateModal {
         frame.render_widget(Paragraph::new(header_lines(app)), chunks[0]);
         let channels: Vec<Line<'static>> = app
             .session
-            .channels
+            .channels()
             .iter()
             .map(channel_preview_row)
             .collect();

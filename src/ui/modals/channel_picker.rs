@@ -56,7 +56,7 @@ impl ChannelPickerModal {
                 Action::Stay
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                let max = app.session.channels.len().saturating_sub(1);
+                let max = app.session.channels().len().saturating_sub(1);
                 if self.cursor < max {
                     self.cursor += 1;
                 }
@@ -106,12 +106,12 @@ impl ChannelPickerModal {
     }
 
     fn focused_channel_index(&self, app: &App) -> Option<u16> {
-        app.session.channels.get(self.cursor).map(|c| c.index)
+        app.session.channels().get(self.cursor).map(|c| c.index)
     }
 
     fn focused_label(&self, app: &App) -> String {
         app.session
-            .channels
+            .channels()
             .get(self.cursor)
             .and_then(|c| c.label.clone())
             .unwrap_or_default()
@@ -146,9 +146,9 @@ impl ChannelPickerModal {
         // Channel rows interleaved with a dim under-meter separator —
         // breathing room plus a subtle anchor right where adjacent
         // armed meters would otherwise visually merge.
-        let total = app.session.channels.len();
+        let total = app.session.channels().len();
         let mut items: Vec<ListItem> = Vec::with_capacity(total * 2);
-        for (i, channel) in app.session.channels.iter().enumerate() {
+        for (i, channel) in app.session.channels().iter().enumerate() {
             let focused = i == self.cursor;
             let renaming_input = if focused {
                 self.renaming.as_ref()
