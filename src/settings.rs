@@ -57,9 +57,9 @@ impl Settings {
         bounces: &str,
         templates: &str,
     ) -> io::Result<()> {
-        let sessions = expand_home_dir(sessions.trim());
-        let bounces = expand_home_dir(bounces.trim());
-        let templates = expand_home_dir(templates.trim());
+        let sessions = crate::paths::expand_home_dir(sessions.trim());
+        let bounces = crate::paths::expand_home_dir(bounces.trim());
+        let templates = crate::paths::expand_home_dir(templates.trim());
         if sessions.as_os_str().is_empty()
             || bounces.as_os_str().is_empty()
             || templates.as_os_str().is_empty()
@@ -85,17 +85,6 @@ impl Settings {
         let text = toml::to_string_pretty(self).map_err(io::Error::other)?;
         fs::write(path, text)
     }
-}
-
-/// Expands a leading `~/` to the user's home directory; returns the
-/// path verbatim otherwise.
-pub fn expand_home_dir(s: &str) -> PathBuf {
-    if let Some(rest) = s.strip_prefix("~/")
-        && let Some(home) = std::env::var_os("HOME")
-    {
-        return PathBuf::from(home).join(rest);
-    }
-    PathBuf::from(s)
 }
 
 fn settings_path() -> PathBuf {

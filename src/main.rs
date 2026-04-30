@@ -5,8 +5,8 @@ mod capture;
 mod channel;
 #[cfg(debug_assertions)]
 mod debug;
+mod paths;
 mod recording;
-mod sanitize;
 mod session;
 mod settings;
 mod template;
@@ -52,7 +52,7 @@ fn load_template_from_arg(arg: &str, settings: &Settings) -> Option<Template> {
 
 fn template_path_from_arg(arg: &str, templates_dir: &Path) -> PathBuf {
     if arg.starts_with("~/") || arg.contains('/') {
-        return crate::settings::expand_home_dir(arg);
+        return crate::paths::expand_home_dir(arg);
     }
     template::path_for_name(templates_dir, arg)
 }

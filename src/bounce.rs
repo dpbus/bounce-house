@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::{BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -116,7 +116,7 @@ fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
 
     let readers = open_channel_readers(&job.channel_files, job.take.start_sample)?;
     let mut encoder = build_encoder(job.sample_rate)?;
-    let path = unique_mp3_path(
+    let path = crate::paths::unique_mp3_path(
         &job.bounces_dir,
         job.filename_prefix.as_deref(),
         &job.take.name,
@@ -323,35 +323,12 @@ fn encode_tail(
         .map_err(|e| format!("write tail: {}", e))
 }
 
-fn unique_mp3_path(dir: &Path, prefix: Option<&str>, take_name: &str) -> PathBuf {
-    let trimmed = take_name.trim();
-    let safe = if trimmed.is_empty() {
-        "take".to_string()
-    } else {
-        crate::sanitize::filename_safe(trimmed)
-    };
-    let stem = match prefix {
-        Some(p) if !p.is_empty() => format!("{}_{}", p, safe),
-        _ => safe,
-    };
-    let base = dir.join(format!("{}.mp3", stem));
-    if !base.exists() {
-        return base;
-    }
-    for n in 2.. {
-        let candidate = dir.join(format!("{}-{}.mp3", stem, n));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    unreachable!()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::timeline::BounceStatus;
     use hound::{SampleFormat, WavSpec, WavWriter};
+    use std::path::Path;
     use tempfile::tempdir;
 
     fn write_wav(path: &Path, samples: &[f32], sample_rate: u32) {
@@ -428,52 +405,6 @@ mod tests {
     fn take_sample_count_rejects_inverted_range() {
         let take = fake_take(1000, 500);
         assert!(take_sample_count(&take).is_err());
-    }
-
-    #[test]
-    fn unique_mp3_path_uses_take_name_when_no_prefix() {
-        let dir = tempdir().unwrap();
-        let path = unique_mp3_path(dir.path(), None, "verse");
-        assert_eq!(path, dir.path().join("verse.mp3"));
-    }
-
-    #[test]
-    fn unique_mp3_path_prepends_prefix_when_provided() {
-        let dir = tempdir().unwrap();
-        let path = unique_mp3_path(dir.path(), Some("session1"), "verse");
-        assert_eq!(path, dir.path().join("session1_verse.mp3"));
-    }
-
-    #[test]
-    fn unique_mp3_path_appends_counter_on_collision() {
-        let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join("verse.mp3"), b"existing").unwrap();
-        let path = unique_mp3_path(dir.path(), None, "verse");
-        assert_eq!(path, dir.path().join("verse-2.mp3"));
-    }
-
-    #[test]
-    fn unique_mp3_path_finds_next_available_counter() {
-        let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join("verse.mp3"), b"x").unwrap();
-        std::fs::write(dir.path().join("verse-2.mp3"), b"x").unwrap();
-        let path = unique_mp3_path(dir.path(), None, "verse");
-        assert_eq!(path, dir.path().join("verse-3.mp3"));
-    }
-
-    #[test]
-    fn unique_mp3_path_falls_back_to_take_when_name_blank() {
-        let dir = tempdir().unwrap();
-        let path = unique_mp3_path(dir.path(), None, "   ");
-        assert_eq!(path, dir.path().join("take.mp3"));
-    }
-
-    #[test]
-    fn unique_mp3_path_sanitizes_unsafe_characters() {
-        let dir = tempdir().unwrap();
-        let path = unique_mp3_path(dir.path(), None, "take/with/slashes");
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        assert!(!name.contains('/'), "sanitized name leaked '/': {name}");
     }
 
     #[test]

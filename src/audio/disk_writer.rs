@@ -171,7 +171,7 @@ fn finalize_writers(writers: Vec<WavWriter<BufWriter<File>>>) {
 fn channel_filename(ch: &ArmedChannel) -> String {
     match &ch.label {
         Some(label) if !label.trim().is_empty() => {
-            let safe = crate::sanitize::filename_safe(label.trim());
+            let safe = crate::paths::filename_safe(label.trim());
             format!("ch{:02}-{}.wav", ch.index, safe)
         }
         _ => format!("ch{:02}.wav", ch.index),
