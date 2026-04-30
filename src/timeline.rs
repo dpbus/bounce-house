@@ -9,16 +9,12 @@ pub struct Marker {
     pub sample: u64,
 }
 
-/// Lifecycle of a bounce job. The `Done`/`Failed` payloads aren't read
-/// yet, but they exist so the UI can surface the file path or error
-/// message later.
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BounceStatus {
     Pending,
     Bouncing,
-    Done(PathBuf),
-    Failed(String),
+    Done,
+    Failed,
 }
 
 #[derive(Clone, Debug)]
@@ -28,6 +24,7 @@ pub struct Take {
     pub start_sample: u64,
     pub end_sample: u64,
     pub color_index: u8,
+    pub bounce_path: Option<PathBuf>,
     pub bounce_status: BounceStatus,
 }
 
@@ -122,6 +119,7 @@ impl Timeline {
             start_sample: second_last.sample,
             end_sample: last.sample,
             color_index: self.next_take_color(),
+            bounce_path: None,
             bounce_status: BounceStatus::Pending,
         };
         self.takes.push(take);
@@ -131,6 +129,15 @@ impl Timeline {
     pub fn set_bounce_status(&mut self, take_id: Uuid, status: BounceStatus) -> bool {
         if let Some(take) = self.takes.iter_mut().find(|t| t.id == take_id) {
             take.bounce_status = status;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_bounce_path(&mut self, take_id: Uuid, path: PathBuf) -> bool {
+        if let Some(take) = self.takes.iter_mut().find(|t| t.id == take_id) {
+            take.bounce_path = Some(path);
             true
         } else {
             false
@@ -298,10 +305,22 @@ mod tests {
         t.mark(48_000);
         t.create_take("v1".into());
         let id = t.takes()[0].id;
+
+        assert!(t.set_bounce_status(id, BounceStatus::Done));
+        assert_eq!(t.takes()[0].bounce_status, BounceStatus::Done);
+    }
+
+    #[test]
+    fn set_bounce_path_updates_existing_take() {
+        let mut t = timeline();
+        t.mark(0);
+        t.mark(48_000);
+        t.create_take("v1".into());
+        let id = t.takes()[0].id;
         let path = std::path::PathBuf::from("/tmp/v1.mp3");
 
-        assert!(t.set_bounce_status(id, BounceStatus::Done(path.clone())));
-        assert!(matches!(t.takes()[0].bounce_status, BounceStatus::Done(_)));
+        assert!(t.set_bounce_path(id, path.clone()));
+        assert_eq!(t.takes()[0].bounce_path.as_deref(), Some(path.as_path()));
     }
 
     #[test]

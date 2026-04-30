@@ -14,7 +14,7 @@ use mp3lame_encoder::{
 };
 use uuid::Uuid;
 
-use crate::timeline::{BounceStatus, Take};
+use crate::timeline::Take;
 use crate::units::SampleRate;
 
 type ChannelReader = WavReader<BufReader<File>>;
@@ -43,9 +43,15 @@ pub struct BounceJob {
     pub flushed_samples: Option<Arc<AtomicU64>>,
 }
 
+pub enum BounceEvent {
+    Started,
+    Done(PathBuf),
+    Failed,
+}
+
 pub struct BounceUpdate {
     pub take_id: Uuid,
-    pub status: BounceStatus,
+    pub event: BounceEvent,
 }
 
 pub struct BouncePool {
@@ -80,16 +86,16 @@ fn worker_loop(jobs: Receiver<BounceJob>, updates: Sender<BounceUpdate>) {
 
         let _ = updates.send(BounceUpdate {
             take_id: job.take.id,
-            status: BounceStatus::Bouncing,
+            event: BounceEvent::Started,
         });
 
-        let status = match bounce_take(&job) {
-            Ok(path) => BounceStatus::Done(path),
-            Err(err) => BounceStatus::Failed(err),
+        let event = match bounce_take(&job) {
+            Ok(path) => BounceEvent::Done(path),
+            Err(_) => BounceEvent::Failed,
         };
         let _ = updates.send(BounceUpdate {
             take_id: job.take.id,
-            status,
+            event,
         });
     }
 }
@@ -352,6 +358,7 @@ mod tests {
             start_sample: start,
             end_sample: end,
             color_index: 0,
+            bounce_path: None,
             bounce_status: BounceStatus::Pending,
         }
     }

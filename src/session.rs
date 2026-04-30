@@ -7,6 +7,7 @@ use crate::recording::Recording;
 use crate::settings::Settings;
 use uuid::Uuid;
 
+use crate::bounce::BounceEvent;
 use crate::timeline::{BounceStatus, Take, Timeline};
 use crate::units::SampleRate;
 
@@ -120,8 +121,21 @@ impl Session {
         self.timeline.takes().last().cloned()
     }
 
-    pub fn set_bounce_status(&mut self, take_id: Uuid, status: BounceStatus) {
-        self.timeline.set_bounce_status(take_id, status);
+    pub fn apply_bounce_event(&mut self, take_id: Uuid, event: BounceEvent) {
+        match event {
+            BounceEvent::Started => {
+                self.timeline
+                    .set_bounce_status(take_id, BounceStatus::Bouncing);
+            }
+            BounceEvent::Done(path) => {
+                self.timeline.set_bounce_path(take_id, path);
+                self.timeline.set_bounce_status(take_id, BounceStatus::Done);
+            }
+            BounceEvent::Failed => {
+                self.timeline
+                    .set_bounce_status(take_id, BounceStatus::Failed);
+            }
+        }
     }
 
     pub fn start_recording(&mut self, channel_files: Vec<PathBuf>) {

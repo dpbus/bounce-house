@@ -355,7 +355,7 @@ fn take_info_line(take: &Take, dur_secs: u64, total_ticks: u64) -> Line<'static>
             format!("  {}  ", mmss(dur_secs)),
             Style::default().fg(Color::DarkGray),
         ),
-        bounce_status_span(&take.bounce_status, total_ticks),
+        bounce_status_span(take.bounce_status, total_ticks),
     ])
 }
 
@@ -444,15 +444,15 @@ fn naming_hint(view: &View) -> Option<Line<'static>> {
     })
 }
 
-fn bounce_status_span(status: &BounceStatus, total_ticks: u64) -> Span<'static> {
+fn bounce_status_span(status: BounceStatus, total_ticks: u64) -> Span<'static> {
     match status {
         BounceStatus::Pending => Span::styled("◌", Style::default().fg(Color::DarkGray)),
         BounceStatus::Bouncing => Span::styled(
             spinner_glyph(total_ticks),
             Style::default().fg(Color::White),
         ),
-        BounceStatus::Done(_) => Span::styled("✓", Style::default().fg(Color::Green)),
-        BounceStatus::Failed(_) => Span::styled("✗", Style::default().fg(Color::Red)),
+        BounceStatus::Done => Span::styled("✓", Style::default().fg(Color::Green)),
+        BounceStatus::Failed => Span::styled("✗", Style::default().fg(Color::Red)),
     }
 }
 

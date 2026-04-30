@@ -97,16 +97,16 @@ impl App {
 
     pub fn tick_display(&mut self) {
         self.total_ticks += 1;
-        self.apply_bounce_status_updates();
+        self.apply_bounce_events();
         self.drain_level_observations();
         self.evict_old_level_history();
     }
 
-    fn apply_bounce_status_updates(&mut self) {
+    fn apply_bounce_events(&mut self) {
         let updates = self.bounce_pool.drain_updates();
         for update in updates {
             self.session
-                .set_bounce_status(update.take_id, update.status);
+                .apply_bounce_event(update.take_id, update.event);
         }
     }
 
