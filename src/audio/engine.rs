@@ -164,6 +164,21 @@ impl Engine {
         });
     }
 
+    #[cfg(test)]
+    fn for_test(channel_count: usize) -> (Self, rtrb::Consumer<LevelObservation>) {
+        let sample_position = Arc::new(AtomicU64::new(0));
+        let (levels_producer, levels_consumer) =
+            rtrb::RingBuffer::<LevelObservation>::new(LEVEL_BUFFER_CAPACITY);
+        let engine = Engine {
+            sample_position,
+            total_channel_count: channel_count,
+            peaks_buf: vec![0.0; channel_count],
+            raw_producer: None,
+            levels_producer,
+        };
+        (engine, levels_consumer)
+    }
+
     fn push_raw_if_attached(&mut self, data: &[f32]) {
         let Some(producer) = &mut self.raw_producer else {
             return;
@@ -177,5 +192,82 @@ impl Engine {
         slice1.copy_from_slice(&data[..split]);
         slice2.copy_from_slice(&data[split..]);
         chunk.commit_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scan_peaks_finds_max_abs_per_channel() {
+        let (mut engine, _) = Engine::for_test(2);
+        // 3 frames × 2 channels, interleaved (frame-major):
+        //   ch0 stream:  0.1, -0.5,  0.3 → max abs 0.5
+        //   ch1 stream: -0.2,  0.4, -0.7 → max abs 0.7
+        let data = [0.1, -0.2, -0.5, 0.4, 0.3, -0.7];
+        let frames = engine.scan_peaks(&data);
+        assert_eq!(frames, 3);
+        assert!((engine.peaks_buf[0] - 0.5).abs() < 1e-6);
+        assert!((engine.peaks_buf[1] - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn scan_peaks_resets_between_callbacks() {
+        let (mut engine, _) = Engine::for_test(1);
+        engine.scan_peaks(&[0.9]);
+        assert!((engine.peaks_buf[0] - 0.9).abs() < 1e-6);
+        // Next "callback" with smaller signal shouldn't carry old peak.
+        engine.scan_peaks(&[0.1]);
+        assert!((engine.peaks_buf[0] - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn scan_peaks_drops_partial_trailing_frame() {
+        let (mut engine, _) = Engine::for_test(2);
+        // 5 samples → 2 complete frames + 1 trailing sample (dropped).
+        let data = [0.1, 0.2, 0.3, 0.4, 0.5];
+        let frames = engine.scan_peaks(&data);
+        assert_eq!(frames, 2);
+        // Only first 4 samples are scanned; ch0={0.1, 0.3}, ch1={0.2, 0.4}.
+        assert!((engine.peaks_buf[0] - 0.3).abs() < 1e-6);
+        assert!((engine.peaks_buf[1] - 0.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn scan_peaks_empty_input_yields_zero_frames() {
+        let (mut engine, _) = Engine::for_test(2);
+        let frames = engine.scan_peaks(&[]);
+        assert_eq!(frames, 0);
+        assert_eq!(engine.peaks_buf, vec![0.0, 0.0]);
+    }
+
+    #[test]
+    fn advance_sample_position_returns_pre_advance_value() {
+        let (engine, _) = Engine::for_test(2);
+        // Atomic starts at 0; the first advance returns 0 (callback start)
+        // and leaves the atomic at the new position.
+        assert_eq!(engine.advance_sample_position(64), 0);
+        assert_eq!(engine.sample_position.load(Ordering::Relaxed), 64);
+        // Next advance returns the previous total (64) — that's the
+        // callback_start_sample for the second buffer.
+        assert_eq!(engine.advance_sample_position(64), 64);
+        assert_eq!(engine.sample_position.load(Ordering::Relaxed), 128);
+    }
+
+    #[test]
+    fn publish_observation_pushes_with_peaks_and_recorded_flag() {
+        let (mut engine, mut consumer) = Engine::for_test(2);
+        engine.peaks_buf[0] = 0.3;
+        engine.peaks_buf[1] = 0.7;
+        engine.publish_observation(48_000);
+
+        let obs = consumer.pop().expect("observation should be pushed");
+        assert_eq!(obs.sample, 48_000);
+        assert!(!obs.recorded, "no producer attached → not recorded");
+        assert_eq!(obs.channel_peaks[0], 0.3);
+        assert_eq!(obs.channel_peaks[1], 0.7);
+        // Channels past total_channel_count remain at default zero.
+        assert_eq!(obs.channel_peaks[2], 0.0);
     }
 }

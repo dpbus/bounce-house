@@ -242,3 +242,67 @@ fn waveform_amps(
     }
     buckets
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn layout_at(window_secs: u64, cols: usize, current_sample: u64) -> WaveformLayout {
+        WaveformLayout::new(window_secs, cols, 48_000, current_sample)
+    }
+
+    #[test]
+    fn current_sample_lands_in_rightmost_column() {
+        let layout = layout_at(10, 100, 480_000); // exactly 10s in
+        assert_eq!(layout.sample_to_column(480_000), Some(99));
+    }
+
+    #[test]
+    fn samples_before_window_return_none() {
+        let layout = layout_at(10, 100, 1_000_000);
+        // Anything before the leftmost is off-screen.
+        assert_eq!(layout.sample_to_column(0), None);
+    }
+
+    #[test]
+    fn leftmost_sample_is_one_window_back_from_current_bucket() {
+        let layout = layout_at(10, 100, 480_000);
+        // 10s × 48000 = 480_000 visible samples; samples_per_col = 4_800.
+        // Current bucket starts at 480_000 (already aligned), leftmost at
+        // 480_000 - 4_800 * 99 = 480_000 - 475_200 = 4_800.
+        assert_eq!(layout.leftmost_sample, 4_800);
+        assert_eq!(layout.samples_per_col, 4_800);
+    }
+
+    #[test]
+    fn early_recording_has_negative_leftmost_sample() {
+        // Only 5 samples in but 10s window → most of the window is "before
+        // recording started." leftmost_sample should be negative.
+        let layout = layout_at(10, 100, 5);
+        assert!(layout.leftmost_sample < 0);
+    }
+
+    #[test]
+    fn sample_to_column_distributes_across_columns() {
+        let layout = layout_at(10, 100, 480_000);
+        // Sample 240_000 (5s in, midpoint of window) → roughly col 50.
+        let col = layout.sample_to_column(240_000).unwrap();
+        assert!((49..=51).contains(&col), "expected ~50, got {col}");
+    }
+
+    #[test]
+    fn sample_at_leftmost_lands_in_column_zero() {
+        let layout = layout_at(10, 100, 480_000);
+        let leftmost = layout.leftmost_sample as u64;
+        assert_eq!(layout.sample_to_column(leftmost), Some(0));
+    }
+
+    #[test]
+    fn samples_per_col_floors_at_one() {
+        // Tiny window relative to many cols — samples_per_col would be 0
+        // without the .max(1) guard. The math should still produce a
+        // valid layout instead of dividing by zero.
+        let layout = WaveformLayout::new(1, 100_000, 48_000, 0);
+        assert_eq!(layout.samples_per_col, 1);
+    }
+}

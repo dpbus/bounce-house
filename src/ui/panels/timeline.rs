@@ -450,3 +450,67 @@ fn bounce_status_span(status: &BounceStatus, total_ticks: u64) -> Span<'static> 
         BounceStatus::Failed(_) => Span::styled("✗", Style::default().fg(Color::Red)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn now_at_bottom_row() {
+        let layout = TimelineLayout::new(60, 24);
+        // The "now" sample (== now_sec) sits at the bottom row.
+        assert_eq!(layout.row_for_sec(60), 23);
+    }
+
+    #[test]
+    fn early_seconds_stay_near_bottom_until_window_grows() {
+        // Panel covers MIN_TIMELINE_SECS (30) when recording is shorter.
+        // At 5 seconds elapsed, "0 sec" maps to ~5/30 of the height up.
+        let layout = TimelineLayout::new(5, 24);
+        let row = layout.row_for_sec(0);
+        // ~5/30 of 24 = 4 rows back from now_row (23) → row 19.
+        assert!((18..=20).contains(&row), "expected ~19, got {row}");
+    }
+
+    #[test]
+    fn old_seconds_clamp_to_top_row() {
+        // After window grows past min, the recording start (sec 0) anchors at row 0.
+        let layout = TimelineLayout::new(60, 24);
+        assert_eq!(layout.row_for_sec(0), 0);
+    }
+
+    #[test]
+    fn future_seconds_clamp_to_now_row() {
+        // Querying past `now_sec` (e.g. by sample races) saturates rather than wrapping.
+        let layout = TimelineLayout::new(60, 24);
+        assert_eq!(layout.row_for_sec(120), 23);
+    }
+
+    #[test]
+    fn min_timeline_secs_holds_until_recording_outgrows_it() {
+        // When elapsed < MIN_TIMELINE_SECS, the scale is fixed at MIN.
+        // 15 seconds elapsed → max_secs = 30, row 0 corresponds to "30 sec ago".
+        let layout = TimelineLayout::new(15, 24);
+        assert_eq!(layout.max_secs, MIN_TIMELINE_SECS);
+    }
+
+    #[test]
+    fn long_recording_stretches_to_fit_full_duration() {
+        let layout = TimelineLayout::new(600, 24);
+        assert_eq!(layout.max_secs, 600);
+    }
+
+    #[test]
+    fn now_row_handles_zero_panel_rows() {
+        let layout = TimelineLayout::new(60, 0);
+        assert_eq!(layout.now_row, 0);
+    }
+
+    #[test]
+    fn row_for_sec_stable_across_proportional_scale() {
+        // Halfway through the visible window should be ~halfway up the panel.
+        let layout = TimelineLayout::new(60, 24);
+        let mid = layout.row_for_sec(30);
+        assert!((11..=13).contains(&mid), "expected ~12, got {mid}");
+    }
+}
