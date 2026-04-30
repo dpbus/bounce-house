@@ -308,12 +308,7 @@ mod tests {
     #[test]
     fn db_label_pads_to_consistent_width() {
         // Each label should fit in 8 chars (5 number + " dB"), with 2-char padding.
-        let labels = [
-            db_label(0.0),
-            db_label(1.0),
-            db_label(0.1),
-            db_label(0.001),
-        ];
+        let labels = [db_label(0.0), db_label(1.0), db_label(0.1), db_label(0.001)];
         let widths: Vec<usize> = labels.iter().map(|l| l.chars().count()).collect();
         assert!(
             widths.windows(2).all(|w| w[0] == w[1]),

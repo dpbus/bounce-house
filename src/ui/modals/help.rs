@@ -33,7 +33,11 @@ impl HelpModal {
             .direction(Direction::Vertical)
             .horizontal_margin(3)
             .vertical_margin(1)
-            .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(1)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
             .split(inner);
 
         frame.render_widget(Paragraph::new(lines), chunks[0]);

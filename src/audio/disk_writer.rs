@@ -368,4 +368,3 @@ mod tests {
         assert!(!result.contains('/'), "expected no '/' in {result}");
     }
 }
-

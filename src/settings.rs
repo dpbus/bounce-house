@@ -90,10 +90,10 @@ impl Settings {
 /// Expands a leading `~/` to the user's home directory; returns the
 /// path verbatim otherwise.
 pub fn expand_home_dir(s: &str) -> PathBuf {
-    if let Some(rest) = s.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(rest);
-        }
+    if let Some(rest) = s.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return PathBuf::from(home).join(rest);
     }
     PathBuf::from(s)
 }
@@ -113,5 +113,7 @@ fn settings_dir() -> PathBuf {
 /// Falls back to `.` when `HOME` is unset (sparse launchd / minimal env)
 /// so first-launch path resolution still produces something writeable.
 fn home_dir() -> PathBuf {
-    env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| ".".into())
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| ".".into())
 }

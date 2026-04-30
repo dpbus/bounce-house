@@ -89,7 +89,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let mut grid: Vec<Line<'static>> = (0..panel_rows).map(|_| empty_row()).collect();
     render_events(&mut grid, &placed_events, timeline, app.total_ticks);
     fill_take_continuations(&mut grid, &placed_events, timeline, &layout);
-    render_in_progress_segment(&mut grid, view, &placed_events, timeline, &layout, naming_row);
+    render_in_progress_segment(
+        &mut grid,
+        view,
+        &placed_events,
+        timeline,
+        &layout,
+        naming_row,
+    );
 
     // Recording-start indicator travels up with the proportional scale
     // and anchors at row 0 past MIN_TIMELINE_SECS. Painted after the
@@ -168,10 +175,7 @@ fn collect_events(
             .or_insert((marker.sample, 1));
     }
     for (anchor_sample, marker_count) in clusters_by_row.into_values() {
-        events.push((
-            anchor_sample,
-            TimelineEvent::MarkerCluster { marker_count },
-        ));
+        events.push((anchor_sample, TimelineEvent::MarkerCluster { marker_count }));
     }
 
     events.sort_by_key(|(s, _)| *s);
@@ -260,6 +264,7 @@ fn fill_take_continuations(
         };
         let first = start_row.max(prev_floor);
         let color = take_color(take.color_index as usize);
+        #[allow(clippy::needless_range_loop)]
         for r in first..placed.row {
             grid[r] = continuation_line(color);
         }

@@ -13,10 +13,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         .constraints([Constraint::Fill(1), Constraint::Length(RIGHT_HINTS_WIDTH)])
         .split(area);
     frame.render_widget(Paragraph::new(left(app, view)), chunks[0]);
-    frame.render_widget(
-        Paragraph::new(right(app, view)).right_aligned(),
-        chunks[1],
-    );
+    frame.render_widget(Paragraph::new(right(app, view)).right_aligned(), chunks[1]);
 }
 
 fn left(app: &App, view: &View) -> Line<'static> {

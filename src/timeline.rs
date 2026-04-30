@@ -304,10 +304,7 @@ mod tests {
         let path = std::path::PathBuf::from("/tmp/v1.mp3");
 
         assert!(t.set_bounce_status(id, BounceStatus::Done(path.clone())));
-        assert!(matches!(
-            t.takes()[0].bounce_status,
-            BounceStatus::Done(_)
-        ));
+        assert!(matches!(t.takes()[0].bounce_status, BounceStatus::Done(_)));
     }
 
     #[test]
@@ -374,4 +371,3 @@ mod tests {
         assert_eq!(t.since_last_marker_secs(48_000), 0);
     }
 }
-

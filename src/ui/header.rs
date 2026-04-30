@@ -35,9 +35,7 @@ fn separator() -> Vec<Span<'static>> {
 }
 
 fn session_duration_spans(app: &App) -> Vec<Span<'static>> {
-    let secs = (Local::now() - app.started_at)
-        .num_seconds()
-        .max(0) as u64;
+    let secs = (Local::now() - app.started_at).num_seconds().max(0) as u64;
     vec![
         Span::styled("Session ", Style::default().fg(Color::DarkGray)),
         Span::raw(format!(

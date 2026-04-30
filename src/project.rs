@@ -44,11 +44,7 @@ impl Project {
         Self::with_channels(self.channels.clone(), self.sample_rate(), settings)
     }
 
-    fn with_channels(
-        channels: Vec<Channel>,
-        sample_rate: SampleRate,
-        settings: &Settings,
-    ) -> Self {
+    fn with_channels(channels: Vec<Channel>, sample_rate: SampleRate, settings: &Settings) -> Self {
         let name = Local::now().format("%Y-%m-%d-%H%M%S").to_string();
         let dir = settings.projects_dir.join(&name);
         let bounces_dir = settings.bounces_dir.join(&name);
@@ -94,7 +90,10 @@ impl Project {
     /// Wall-clock seconds since the recording started; frozen at stop.
     /// Zero when no recording exists yet.
     pub fn elapsed_secs(&self) -> u64 {
-        self.recording.as_ref().map(|r| r.elapsed_secs()).unwrap_or(0)
+        self.recording
+            .as_ref()
+            .map(|r| r.elapsed_secs())
+            .unwrap_or(0)
     }
 }
 
@@ -117,7 +116,13 @@ mod tests {
         let settings = settings_in(dir.path());
         let project = Project::new(4, SampleRate(48_000), &settings);
         assert_eq!(project.channels.len(), 4);
-        assert!(project.channels.iter().enumerate().all(|(i, c)| c.index == i as u16));
+        assert!(
+            project
+                .channels
+                .iter()
+                .enumerate()
+                .all(|(i, c)| c.index == i as u16)
+        );
         assert!(project.channels.iter().all(|c| !c.armed));
         assert!(project.channels.iter().all(|c| c.label.is_none()));
     }
@@ -128,7 +133,10 @@ mod tests {
         let settings = settings_in(dir.path());
         let project = Project::new(2, SampleRate(48_000), &settings);
         assert_eq!(project.dir, settings.projects_dir.join(&project.name));
-        assert_eq!(project.bounces_dir, settings.bounces_dir.join(&project.name));
+        assert_eq!(
+            project.bounces_dir,
+            settings.bounces_dir.join(&project.name)
+        );
     }
 
     #[test]
@@ -181,7 +189,12 @@ mod tests {
         assert_eq!(rec.channel_files, files);
         assert!(rec.stopped_at.is_none());
 
-        let markers: Vec<u64> = project.timeline.markers().iter().map(|m| m.sample).collect();
+        let markers: Vec<u64> = project
+            .timeline
+            .markers()
+            .iter()
+            .map(|m| m.sample)
+            .collect();
         assert_eq!(markers, vec![0]);
     }
 
@@ -196,7 +209,12 @@ mod tests {
         let rec = project.recording.as_ref().expect("recording set");
         assert!(rec.stopped_at.is_some());
 
-        let markers: Vec<u64> = project.timeline.markers().iter().map(|m| m.sample).collect();
+        let markers: Vec<u64> = project
+            .timeline
+            .markers()
+            .iter()
+            .map(|m| m.sample)
+            .collect();
         assert_eq!(markers, vec![0, 96_000]);
     }
 
@@ -207,7 +225,12 @@ mod tests {
         let mut project = Project::new(1, SampleRate(48_000), &settings_in(dir.path()));
         project.stop_recording(48_000);
         assert!(project.recording.is_none());
-        let markers: Vec<u64> = project.timeline.markers().iter().map(|m| m.sample).collect();
+        let markers: Vec<u64> = project
+            .timeline
+            .markers()
+            .iter()
+            .map(|m| m.sample)
+            .collect();
         assert_eq!(markers, vec![48_000]);
     }
 
@@ -263,4 +286,3 @@ mod tests {
         assert_ne!(original.bounces_dir, forked.bounces_dir);
     }
 }
-

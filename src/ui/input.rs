@@ -2,8 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::App;
 use crate::ui::modals::{
-    ActiveModal, ChannelPickerModal, HelpModal, LoadTemplateModal, SaveTemplateModal,
-    SettingsModal,
+    ActiveModal, ChannelPickerModal, HelpModal, LoadTemplateModal, SaveTemplateModal, SettingsModal,
 };
 use crate::ui::take_naming::TakeNaming;
 use crate::ui::view::View;

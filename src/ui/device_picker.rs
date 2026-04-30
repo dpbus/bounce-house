@@ -30,28 +30,26 @@ pub fn pick(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result
     loop {
         terminal.draw(|frame| draw(frame, &devices, cursor))?;
 
-        if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        cursor = cursor.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if cursor + 1 < devices.len() {
-                            cursor += 1;
-                        }
-                    }
-                    KeyCode::Enter => {
-                        return Ok(devices.swap_remove(cursor));
-                    }
-                    KeyCode::Esc | KeyCode::Char('q') => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Interrupted,
-                            "User quit during device selection",
-                        ));
-                    }
-                    _ => {}
+        if event::poll(Duration::from_millis(50))?
+            && let Event::Key(key) = event::read()?
+        {
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    cursor = cursor.saturating_sub(1);
                 }
+                KeyCode::Down | KeyCode::Char('j') if cursor + 1 < devices.len() => {
+                    cursor += 1;
+                }
+                KeyCode::Enter => {
+                    return Ok(devices.swap_remove(cursor));
+                }
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "User quit during device selection",
+                    ));
+                }
+                _ => {}
             }
         }
     }

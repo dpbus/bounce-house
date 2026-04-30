@@ -115,7 +115,11 @@ fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
 
     let readers = open_channel_readers(&job.channel_files, job.take.start_sample)?;
     let mut encoder = build_encoder(job.sample_rate)?;
-    let path = unique_mp3_path(&job.bounces_dir, job.filename_prefix.as_deref(), &job.take.name);
+    let path = unique_mp3_path(
+        &job.bounces_dir,
+        job.filename_prefix.as_deref(),
+        &job.take.name,
+    );
     let mut out_file =
         File::create(&path).map_err(|e| format!("create {}: {}", path.display(), e))?;
 
@@ -386,10 +390,7 @@ mod tests {
     fn compute_gain_brings_loud_signal_down_to_target() {
         // Source at -10 LUFS, target -14 → need -4 dB → gain ≈ 0.631.
         let gain = compute_normalization_gain(-10.0, 0.5);
-        assert!(
-            (gain - 0.631).abs() < 0.005,
-            "expected ~0.631, got {gain}"
-        );
+        assert!((gain - 0.631).abs() < 0.005, "expected ~0.631, got {gain}");
     }
 
     #[test]
@@ -398,10 +399,7 @@ mod tests {
         // Peak at 0.1 (-20 dBTP), so peak ceiling is -1 - (-20) = +19 dB,
         // which exceeds the +6 dB needed for LUFS — LUFS path wins.
         let gain = compute_normalization_gain(-20.0, 0.1);
-        assert!(
-            (gain - 1.995).abs() < 0.01,
-            "expected ~1.995, got {gain}"
-        );
+        assert!((gain - 1.995).abs() < 0.01, "expected ~1.995, got {gain}");
     }
 
     #[test]

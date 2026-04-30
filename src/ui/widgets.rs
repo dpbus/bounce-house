@@ -48,8 +48,7 @@ static TAKE_HUE_START_DEG: LazyLock<f32> = LazyLock::new(|| rand::random::<f32>(
 /// contrast, perceptually uniform brightness, no curated palette to
 /// maintain.
 pub fn take_color(idx: usize) -> Color {
-    let hue_deg =
-        (*TAKE_HUE_START_DEG + idx as f32 * TAKE_HUE_STRIDE_DEG).rem_euclid(360.0);
+    let hue_deg = (*TAKE_HUE_START_DEG + idx as f32 * TAKE_HUE_STRIDE_DEG).rem_euclid(360.0);
     let oklch = Oklch::new(TAKE_COLOR_LIGHTNESS, TAKE_COLOR_CHROMA, hue_deg);
     let rgb: Srgb<u8> = Srgb::from_color(oklch).into_format();
     Color::Rgb(rgb.red, rgb.green, rgb.blue)

@@ -118,23 +118,39 @@ mod tests {
     #[test]
     fn list_returns_only_toml_files_sorted_by_name() {
         let dir = tempdir().unwrap();
-        make("zebra").save(&path_for_name(dir.path(), "zebra")).unwrap();
-        make("apple").save(&path_for_name(dir.path(), "apple")).unwrap();
-        make("mango").save(&path_for_name(dir.path(), "mango")).unwrap();
+        make("zebra")
+            .save(&path_for_name(dir.path(), "zebra"))
+            .unwrap();
+        make("apple")
+            .save(&path_for_name(dir.path(), "apple"))
+            .unwrap();
+        make("mango")
+            .save(&path_for_name(dir.path(), "mango"))
+            .unwrap();
         // Non-toml shouldn't appear:
         std::fs::write(dir.path().join("readme.txt"), "ignore me").unwrap();
 
-        let names: Vec<String> = list(dir.path()).unwrap().into_iter().map(|t| t.name).collect();
+        let names: Vec<String> = list(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
         assert_eq!(names, vec!["apple", "mango", "zebra"]);
     }
 
     #[test]
     fn list_skips_corrupt_toml_files() {
         let dir = tempdir().unwrap();
-        make("good").save(&path_for_name(dir.path(), "good")).unwrap();
+        make("good")
+            .save(&path_for_name(dir.path(), "good"))
+            .unwrap();
         std::fs::write(dir.path().join("broken.toml"), "this is not toml = = =").unwrap();
 
-        let names: Vec<String> = list(dir.path()).unwrap().into_iter().map(|t| t.name).collect();
+        let names: Vec<String> = list(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
         assert_eq!(names, vec!["good"]);
     }
 
