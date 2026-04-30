@@ -318,6 +318,199 @@ fn encode_tail(
         .map_err(|e| format!("write tail: {}", e))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::timeline::BounceStatus;
+    use hound::{SampleFormat, WavSpec, WavWriter};
+    use tempfile::tempdir;
+
+    fn write_wav(path: &Path, samples: &[f32], sample_rate: u32) {
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate,
+            bits_per_sample: 32,
+            sample_format: SampleFormat::Float,
+        };
+        let mut writer = WavWriter::create(path, spec).expect("create wav");
+        for &s in samples {
+            writer.write_sample(s).expect("write sample");
+        }
+        writer.finalize().expect("finalize wav");
+    }
+
+    fn fake_take(start: u64, end: u64) -> Take {
+        Take {
+            id: 0,
+            name: "test".into(),
+            start_sample: start,
+            end_sample: end,
+            color_index: 0,
+            bounce_status: BounceStatus::Pending,
+        }
+    }
+
+    #[test]
+    fn compute_gain_silence_returns_unity() {
+        // Below the silence floor → no normalization applied.
+        assert_eq!(compute_normalization_gain(-80.0, 0.001), 1.0);
+        assert_eq!(compute_normalization_gain(f64::NEG_INFINITY, 0.0), 1.0);
+        assert_eq!(compute_normalization_gain(f64::NAN, 0.5), 1.0);
+    }
+
+    #[test]
+    fn compute_gain_brings_loud_signal_down_to_target() {
+        // Source at -10 LUFS, target -14 → need -4 dB → gain ≈ 0.631.
+        let gain = compute_normalization_gain(-10.0, 0.5);
+        assert!(
+            (gain - 0.631).abs() < 0.005,
+            "expected ~0.631, got {gain}"
+        );
+    }
+
+    #[test]
+    fn compute_gain_brings_quiet_signal_up_to_target() {
+        // Source at -20 LUFS, low peak → need +6 dB → gain ≈ 1.995.
+        // Peak at 0.1 (-20 dBTP), so peak ceiling is -1 - (-20) = +19 dB,
+        // which exceeds the +6 dB needed for LUFS — LUFS path wins.
+        let gain = compute_normalization_gain(-20.0, 0.1);
+        assert!(
+            (gain - 1.995).abs() < 0.01,
+            "expected ~1.995, got {gain}"
+        );
+    }
+
+    #[test]
+    fn compute_gain_caps_at_peak_ceiling_to_avoid_clipping() {
+        // Source at -30 LUFS (wants +16 dB) but peak already at 0.9 (-0.92 dBTP).
+        // Peak ceiling allows only -1 - (-0.92) = -0.08 dB, so gain ≈ 0.99.
+        let gain = compute_normalization_gain(-30.0, 0.9);
+        assert!(gain < 1.0, "peak limit should reduce, got {gain}");
+        assert!(gain > 0.95, "shouldn't reduce dramatically, got {gain}");
+    }
+
+    #[test]
+    fn take_sample_count_returns_difference() {
+        let take = fake_take(100, 1000);
+        assert_eq!(take_sample_count(&take).unwrap(), 900);
+    }
+
+    #[test]
+    fn take_sample_count_rejects_zero_length() {
+        let take = fake_take(500, 500);
+        assert!(take_sample_count(&take).is_err());
+    }
+
+    #[test]
+    fn take_sample_count_rejects_inverted_range() {
+        let take = fake_take(1000, 500);
+        assert!(take_sample_count(&take).is_err());
+    }
+
+    #[test]
+    fn unique_mp3_path_uses_take_name_when_no_prefix() {
+        let dir = tempdir().unwrap();
+        let path = unique_mp3_path(dir.path(), None, "verse");
+        assert_eq!(path, dir.path().join("verse.mp3"));
+    }
+
+    #[test]
+    fn unique_mp3_path_prepends_prefix_when_provided() {
+        let dir = tempdir().unwrap();
+        let path = unique_mp3_path(dir.path(), Some("session1"), "verse");
+        assert_eq!(path, dir.path().join("session1_verse.mp3"));
+    }
+
+    #[test]
+    fn unique_mp3_path_appends_counter_on_collision() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("verse.mp3"), b"existing").unwrap();
+        let path = unique_mp3_path(dir.path(), None, "verse");
+        assert_eq!(path, dir.path().join("verse-2.mp3"));
+    }
+
+    #[test]
+    fn unique_mp3_path_finds_next_available_counter() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("verse.mp3"), b"x").unwrap();
+        std::fs::write(dir.path().join("verse-2.mp3"), b"x").unwrap();
+        let path = unique_mp3_path(dir.path(), None, "verse");
+        assert_eq!(path, dir.path().join("verse-3.mp3"));
+    }
+
+    #[test]
+    fn unique_mp3_path_falls_back_to_take_when_name_blank() {
+        let dir = tempdir().unwrap();
+        let path = unique_mp3_path(dir.path(), None, "   ");
+        assert_eq!(path, dir.path().join("take.mp3"));
+    }
+
+    #[test]
+    fn unique_mp3_path_sanitizes_unsafe_characters() {
+        let dir = tempdir().unwrap();
+        let path = unique_mp3_path(dir.path(), None, "take/with/slashes");
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(!name.contains('/'), "sanitized name leaked '/': {name}");
+    }
+
+    #[test]
+    fn bounce_take_writes_an_mp3_file() {
+        // Smoke-test the full encode path: two channel WAVs, a take that
+        // covers their full extent, run bounce_take, verify the MP3 exists
+        // and is non-empty. Doesn't decode — that's a heavier test.
+        let dir = tempdir().unwrap();
+        let bounces_dir = dir.path().join("bounces");
+        std::fs::create_dir_all(&bounces_dir).unwrap();
+
+        let ch0 = dir.path().join("ch0.wav");
+        let ch1 = dir.path().join("ch1.wav");
+        // 1 second of silence at 48kHz so ebur128 reaches "silent" floor.
+        let samples: Vec<f32> = vec![0.0; 48_000];
+        write_wav(&ch0, &samples, 48_000);
+        write_wav(&ch1, &samples, 48_000);
+
+        let job = BounceJob {
+            take: fake_take(0, 48_000),
+            sample_rate: SampleRate(48_000),
+            bounces_dir: bounces_dir.clone(),
+            filename_prefix: None,
+            channel_files: vec![ch0, ch1],
+            flushed_samples: None,
+        };
+
+        let result = bounce_take(&job);
+        let path = result.expect("bounce_take should succeed");
+        assert!(path.exists(), "mp3 was not written");
+        let size = std::fs::metadata(&path).unwrap().len();
+        assert!(size > 0, "mp3 file is empty");
+    }
+
+    #[test]
+    fn bounce_take_creates_bounces_dir_if_missing() {
+        // Regression: regular bug was that per-project bounces_dir wasn't
+        // being created lazily. Confirm bounce_take creates it.
+        let dir = tempdir().unwrap();
+        let bounces_dir = dir.path().join("nested").join("missing").join("dir");
+        assert!(!bounces_dir.exists());
+
+        let ch0 = dir.path().join("ch0.wav");
+        let samples: Vec<f32> = vec![0.0; 48_000];
+        write_wav(&ch0, &samples, 48_000);
+
+        let job = BounceJob {
+            take: fake_take(0, 48_000),
+            sample_rate: SampleRate(48_000),
+            bounces_dir: bounces_dir.clone(),
+            filename_prefix: None,
+            channel_files: vec![ch0],
+            flushed_samples: None,
+        };
+
+        bounce_take(&job).expect("bounce_take should succeed");
+        assert!(bounces_dir.exists(), "bounces_dir was not created");
+    }
+}
+
 fn unique_mp3_path(dir: &Path, prefix: Option<&str>, take_name: &str) -> PathBuf {
     let trimmed = take_name.trim();
     let safe = if trimmed.is_empty() {

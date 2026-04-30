@@ -177,3 +177,195 @@ fn channel_filename(ch: &ArmedChannel) -> String {
         _ => format!("ch{:02}.wav", ch.index),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hound::WavReader;
+    use tempfile::tempdir;
+
+    fn read_wav_samples(path: &std::path::Path) -> Vec<f32> {
+        let mut reader = WavReader::open(path).expect("open wav");
+        reader
+            .samples::<f32>()
+            .map(|s| s.expect("read sample"))
+            .collect()
+    }
+
+    fn drain_wait() {
+        // The writer loop sleeps 10ms between drains. Two cycles is enough
+        // for any pushed samples to be picked up before we drop and join.
+        std::thread::sleep(Duration::from_millis(30));
+    }
+
+    #[test]
+    fn writes_only_armed_channels_demuxed_to_separate_wavs() {
+        let dir = tempdir().unwrap();
+        let (mut producer, consumer) = rtrb::RingBuffer::<f32>::new(1024);
+
+        let armed = vec![
+            ArmedChannel {
+                index: 0,
+                label: Some("Vocals".into()),
+            },
+            ArmedChannel {
+                index: 2,
+                label: None,
+            },
+        ];
+
+        let writer = DiskWriter::start(
+            consumer,
+            dir.path().to_path_buf(),
+            SampleRate(48000),
+            4,
+            armed,
+        );
+
+        // 3 frames of 4 interleaved channels. Channel 0 carries 1/2/3,
+        // channel 2 carries 10/20/30. Channels 1 and 3 are not armed
+        // and should be dropped.
+        for &s in &[
+            1.0, 99.0, 10.0, 99.0, 2.0, 99.0, 20.0, 99.0, 3.0, 99.0, 30.0, 99.0,
+        ] {
+            producer.push(s).unwrap();
+        }
+
+        drain_wait();
+        drop(writer);
+
+        let ch0 = read_wav_samples(&dir.path().join("ch00-Vocals.wav"));
+        let ch2 = read_wav_samples(&dir.path().join("ch02.wav"));
+        assert_eq!(ch0, vec![1.0, 2.0, 3.0]);
+        assert_eq!(ch2, vec![10.0, 20.0, 30.0]);
+        assert!(!dir.path().join("ch01.wav").exists());
+        assert!(!dir.path().join("ch03.wav").exists());
+    }
+
+    #[test]
+    fn drop_finalizes_partial_frames_cleanly() {
+        let dir = tempdir().unwrap();
+        let (mut producer, consumer) = rtrb::RingBuffer::<f32>::new(1024);
+
+        let armed = vec![ArmedChannel {
+            index: 0,
+            label: None,
+        }];
+        let writer = DiskWriter::start(
+            consumer,
+            dir.path().to_path_buf(),
+            SampleRate(48000),
+            2,
+            armed,
+        );
+
+        // Two complete frames, then one partial (only ch0).
+        // The partial should not be written since it never completes.
+        for &s in &[1.0, 0.0, 2.0, 0.0, 3.0] {
+            producer.push(s).unwrap();
+        }
+        drain_wait();
+        drop(writer);
+
+        let ch0 = read_wav_samples(&dir.path().join("ch00.wav"));
+        assert_eq!(ch0, vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn writes_partial_frame_into_subsequent_call() {
+        let dir = tempdir().unwrap();
+        let (mut producer, consumer) = rtrb::RingBuffer::<f32>::new(1024);
+
+        let armed = vec![ArmedChannel {
+            index: 1,
+            label: None,
+        }];
+        let writer = DiskWriter::start(
+            consumer,
+            dir.path().to_path_buf(),
+            SampleRate(48000),
+            2,
+            armed,
+        );
+
+        // Push samples in unaligned chunks; the demux state is preserved
+        // across pop() calls, so frames should still align correctly.
+        producer.push(1.0).unwrap();
+        producer.push(10.0).unwrap();
+        drain_wait();
+        producer.push(2.0).unwrap();
+        producer.push(20.0).unwrap();
+        drain_wait();
+        drop(writer);
+
+        let ch1 = read_wav_samples(&dir.path().join("ch01.wav"));
+        assert_eq!(ch1, vec![10.0, 20.0]);
+    }
+
+    #[test]
+    fn channel_files_paths_match_disk() {
+        let dir = tempdir().unwrap();
+        let (_, consumer) = rtrb::RingBuffer::<f32>::new(1);
+
+        let armed = vec![
+            ArmedChannel {
+                index: 0,
+                label: Some("Kick".into()),
+            },
+            ArmedChannel {
+                index: 1,
+                label: None,
+            },
+        ];
+        let writer = DiskWriter::start(
+            consumer,
+            dir.path().to_path_buf(),
+            SampleRate(48000),
+            2,
+            armed,
+        );
+
+        let files = writer.channel_files().to_vec();
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0], dir.path().join("ch00-Kick.wav"));
+        assert_eq!(files[1], dir.path().join("ch01.wav"));
+    }
+
+    #[test]
+    fn channel_filename_with_label() {
+        let ch = ArmedChannel {
+            index: 5,
+            label: Some("Vocals".into()),
+        };
+        assert_eq!(channel_filename(&ch), "ch05-Vocals.wav");
+    }
+
+    #[test]
+    fn channel_filename_without_label() {
+        let ch = ArmedChannel {
+            index: 0,
+            label: None,
+        };
+        assert_eq!(channel_filename(&ch), "ch00.wav");
+    }
+
+    #[test]
+    fn channel_filename_treats_whitespace_label_as_unlabeled() {
+        let ch = ArmedChannel {
+            index: 1,
+            label: Some("   ".into()),
+        };
+        assert_eq!(channel_filename(&ch), "ch01.wav");
+    }
+
+    #[test]
+    fn channel_filename_sanitizes_path_separators() {
+        let ch = ArmedChannel {
+            index: 2,
+            label: Some("a/b/c".into()),
+        };
+        let result = channel_filename(&ch);
+        assert!(!result.contains('/'), "expected no '/' in {result}");
+    }
+}
+
