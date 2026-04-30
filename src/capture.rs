@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::audio::{ArmedChannel, DiskWriter, EngineHandle};
-use crate::project::Project;
+use crate::session::Session;
 
 #[derive(Debug)]
 pub enum CaptureError {
@@ -16,9 +16,9 @@ pub struct Capture {
 }
 
 impl Capture {
-    pub fn start(engine: &EngineHandle, project: &mut Project) -> Result<Self, CaptureError> {
+    pub fn start(engine: &EngineHandle, session: &mut Session) -> Result<Self, CaptureError> {
         let max_index = engine.channel_count();
-        let armed: Vec<ArmedChannel> = project
+        let armed: Vec<ArmedChannel> = session
             .armed_channels()
             .filter(|c| c.index < max_index)
             .map(|c| ArmedChannel {
@@ -35,13 +35,13 @@ impl Capture {
         let consumer = engine.attach_consumer();
         let writer = DiskWriter::start(
             consumer,
-            project.dir.clone(),
+            session.dir.clone(),
             engine.sample_rate(),
             engine.channel_count(),
             armed,
         );
         let channel_files = writer.channel_files().to_vec();
-        project.start_recording(channel_files);
+        session.start_recording(channel_files);
 
         Ok(Self {
             start_sample,
@@ -50,10 +50,10 @@ impl Capture {
         })
     }
 
-    pub fn stop(self, engine: &EngineHandle, project: &mut Project) {
+    pub fn stop(self, engine: &EngineHandle, session: &mut Session) {
         engine.detach_consumer();
         let rel_end = self.rel_sample_position();
-        project.stop_recording(rel_end);
+        session.stop_recording(rel_end);
         // self drops here, joining the writer thread
     }
 

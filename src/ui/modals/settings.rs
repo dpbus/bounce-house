@@ -9,7 +9,7 @@ use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
 use crate::ui::widgets::{input_with_cursor, key_hint, modal};
 
-const FIELDS: [&str; 3] = ["Projects:  ", "Bounces:   ", "Templates: "];
+const FIELDS: [&str; 3] = ["Sessions:  ", "Bounces:   ", "Templates: "];
 const CONTENT_WIDTH: u16 = 70;
 const FIELD_ROWS: u16 = FIELDS.len() as u16;
 const HINTS_ROW: u16 = 1;
@@ -40,7 +40,7 @@ impl SettingsModal {
     pub fn new(settings: &Settings) -> Self {
         Self {
             bufs: [
-                TextInput::with_value(&settings.projects_dir.display().to_string()),
+                TextInput::with_value(&settings.sessions_dir.display().to_string()),
                 TextInput::with_value(&settings.bounces_dir.display().to_string()),
                 TextInput::with_value(&settings.templates_dir.display().to_string()),
             ],

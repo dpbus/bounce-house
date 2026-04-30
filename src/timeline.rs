@@ -31,7 +31,7 @@ pub struct Take {
 
 /// Marker/take structure laid down against a recording, in
 /// recording-relative samples. Owns the sample rate and answers all
-/// time-domain questions about the project's events.
+/// time-domain questions about the session's events.
 pub struct Timeline {
     sample_rate: SampleRate,
     markers: Vec<Marker>,

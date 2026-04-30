@@ -66,8 +66,8 @@ impl TimelineLayout {
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let inner = panel(frame, area, "Timeline", None, naming_hint(view));
 
-    let project = &app.project;
-    if project.recording.is_none() {
+    let session = &app.session;
+    if session.recording.is_none() {
         frame.render_widget(Paragraph::new(dim_status("No recording")), inner);
         return;
     }
@@ -77,9 +77,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         return;
     }
 
-    let timeline = &project.timeline;
+    let timeline = &session.timeline;
     let is_recording = app.is_recording();
-    let layout = TimelineLayout::new(project.elapsed_secs(), panel_rows);
+    let layout = TimelineLayout::new(session.elapsed_secs(), panel_rows);
     let naming_row = naming_row(view, timeline, &layout);
     let bottom_row = naming_row.unwrap_or(layout.now_row);
 

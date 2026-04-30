@@ -33,8 +33,8 @@ pub struct BounceJob {
     pub sample_rate: SampleRate,
     pub bounces_dir: PathBuf,
     /// Prepended to the take's filename when present — used in flat
-    /// layouts where multiple projects share one bounces dir. None for
-    /// nested layouts where `bounces_dir` is already project-specific.
+    /// layouts where multiple sessions share one bounces dir. None for
+    /// nested layouts where `bounces_dir` is already session-specific.
     pub filename_prefix: Option<String>,
     pub channel_files: Vec<PathBuf>,
     /// `None` if the recording has already stopped (file is finalized,
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn bounce_take_creates_bounces_dir_if_missing() {
-        // Regression: regular bug was that per-project bounces_dir wasn't
+        // Regression: regular bug was that per-session bounces_dir wasn't
         // being created lazily. Confirm bounce_take creates it.
         let dir = tempdir().unwrap();
         let bounces_dir = dir.path().join("nested").join("missing").join("dir");

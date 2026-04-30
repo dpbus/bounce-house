@@ -23,8 +23,8 @@ Needs Rust (edition 2024) and a C compiler (LAME is built from source).
 cargo run --release
 ```
 
-Output goes to `./recordings/<timestamp>/`: one mono WAV per armed channel
-plus a stereo MP3 per named take.
+Output goes to `~/Music/BounceHouse/Sessions/<timestamp>/`: one mono WAV per
+armed channel plus a stereo MP3 per named take.
 
 ## Keys
 
@@ -70,7 +70,7 @@ src/
 ├── bounce.rs         worker thread: hound → sum → LAME → mp3
 ├── recording.rs      one R-press-to-stop pass; owns the writer
 ├── timeline.rs       markers + takes + bounce status
-├── session.rs        device + channels + output_dir
+├── session.rs        channels + timeline + paths + recording
 ├── channel.rs        channel metadata
 ├── ui/               ratatui views
 └── units.rs          newtypes
@@ -95,7 +95,7 @@ for control + bounce jobs.
 - Per-channel gain/pan applied during the bounce (currently a flat sum)
 - Configurable bounce parameters
 - Persistent per-device channel configuration
-- Save/load a recording project
+- Save/load a recording session
 
 ## Dependencies
 

@@ -6,7 +6,7 @@ use crate::channel::Channel;
 use crate::ui::widgets::vertical_meter;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let armed_channels: Vec<&Channel> = app.project.armed_channels().collect();
+    let armed_channels: Vec<&Channel> = app.session.armed_channels().collect();
     let total = app.engine.channel_count();
     let title = format!(" Meters — {}/{} armed ", armed_channels.len(), total);
     let block = Block::default()

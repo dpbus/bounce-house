@@ -33,7 +33,7 @@ pub fn pad_channels_from_env(app: &mut App) {
         return;
     };
 
-    let current = app.project.channels.len() as u16;
+    let current = app.session.channels.len() as u16;
     if target <= current {
         return;
     }
@@ -44,7 +44,7 @@ pub fn pad_channels_from_env(app: &mut App) {
         } else {
             None
         };
-        app.project.channels.push(Channel {
+        app.session.channels.push(Channel {
             index: i,
             label,
             armed,

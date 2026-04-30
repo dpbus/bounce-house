@@ -6,7 +6,7 @@ use chrono::{DateTime, Local};
 use crate::audio::{Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::{Capture, CaptureError};
-use crate::project::Project;
+use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
 
@@ -21,7 +21,7 @@ const LEVEL_HISTORY_CAPACITY_HINT: usize = MAX_HISTORY_SECS * 100;
 
 pub struct App {
     pub settings: Settings,
-    pub project: Project,
+    pub session: Session,
     pub engine: EngineHandle,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub bounce_pool: BouncePool,
@@ -65,10 +65,10 @@ impl App {
     pub fn new(device: Device, settings: Settings) -> Self {
         let (engine, levels_consumer) = EngineHandle::start(device);
         let n = engine.channel_count() as usize;
-        let project = Project::new(engine.channel_count(), engine.sample_rate(), &settings);
+        let session = Session::new(engine.channel_count(), engine.sample_rate(), &settings);
         App {
             settings,
-            project,
+            session,
             engine,
             levels_consumer,
             bounce_pool: BouncePool::start(),
@@ -105,7 +105,7 @@ impl App {
     fn apply_bounce_status_updates(&mut self) {
         let updates = self.bounce_pool.drain_updates();
         for update in updates {
-            self.project
+            self.session
                 .timeline
                 .set_bounce_status(update.take_id, update.status);
         }
@@ -113,7 +113,7 @@ impl App {
 
     /// Drains observations into both meter decay state and waveform history.
     fn drain_level_observations(&mut self) {
-        let n_channels = self.project.channels.len();
+        let n_channels = self.session.channels.len();
         if self.tick_peaks.len() < n_channels {
             self.tick_peaks.resize(n_channels, 0.0);
         }
@@ -122,7 +122,7 @@ impl App {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
                 self.tick_peaks[i] = self.tick_peaks[i].max(peak);
-                if self.project.channels[i].armed {
+                if self.session.channels[i].armed {
                     combined = combined.max(peak);
                 }
             }
@@ -166,27 +166,27 @@ impl App {
         if self.capture.is_some() {
             return Err(AppError::NotIdle);
         }
-        // If a recording already exists in this project (we stopped
-        // earlier), fork a fresh project so the new capture gets its
+        // If a recording already exists in this session (we stopped
+        // earlier), fork a fresh session so the new capture gets its
         // own dir and timeline. Channels carry over; previous WAVs and
         // bounces stay where they are on disk.
-        if self.project.recording.is_some() {
-            self.project = self.project.fork_for_new_recording(&self.settings);
+        if self.session.recording.is_some() {
+            self.session = self.session.fork_for_new_recording(&self.settings);
         }
-        let capture = Capture::start(&self.engine, &mut self.project)?;
+        let capture = Capture::start(&self.engine, &mut self.session)?;
         self.capture = Some(capture);
         Ok(())
     }
 
     pub fn stop_recording(&mut self) {
         if let Some(capture) = self.capture.take() {
-            capture.stop(&self.engine, &mut self.project);
+            capture.stop(&self.engine, &mut self.session);
         }
     }
 
     pub fn drop_marker(&mut self) {
         if let Some(rel) = self.rel_sample_position() {
-            self.project.timeline.mark(rel);
+            self.session.timeline.mark(rel);
         }
     }
 
@@ -194,11 +194,11 @@ impl App {
         if !self.is_recording() {
             return;
         }
-        self.project.timeline.delete_last_marker();
+        self.session.timeline.delete_last_marker();
     }
 
     pub fn has_unbound_marker(&self) -> bool {
-        self.project.timeline.last_marker_unbound()
+        self.session.timeline.last_marker_unbound()
     }
 
     /// Promotes the trailing unbound marker into a named take and
@@ -212,20 +212,20 @@ impl App {
         let Some(capture) = &self.capture else {
             return;
         };
-        if !self.project.timeline.create_take(trimmed) {
+        if !self.session.timeline.create_take(trimmed) {
             return;
         }
-        let take = self.project.timeline.takes().last().cloned();
+        let take = self.session.timeline.takes().last().cloned();
         let recording = self
-            .project
+            .session
             .recording
             .as_ref()
             .expect("recording exists while capturing");
         let job = take.map(|take| BounceJob {
             take,
-            sample_rate: self.project.sample_rate(),
-            bounces_dir: self.project.bounces_dir.clone(),
-            filename_prefix: self.project.bounces_filename_prefix.clone(),
+            sample_rate: self.session.sample_rate(),
+            bounces_dir: self.session.bounces_dir.clone(),
+            filename_prefix: self.session.bounces_filename_prefix.clone(),
             channel_files: recording.channel_files.clone(),
             flushed_samples: Some(capture.flushed_samples()),
         });
@@ -239,7 +239,7 @@ impl App {
         let template = Template {
             name: name.to_string(),
             device_name: self.engine.device_name().to_string(),
-            channels: self.project.channels.clone(),
+            channels: self.session.channels.clone(),
         };
         template.save(&path)
     }
@@ -250,12 +250,12 @@ impl App {
         template::list(&self.settings.templates_dir).unwrap_or_default()
     }
 
-    /// Applies `template` to the project. Out-of-range template indices
+    /// Applies `template` to the session. Out-of-range template indices
     /// are silently dropped; channels on the device not covered by the
     /// template keep their fresh defaults.
     pub fn load_template(&mut self, template: &Template) {
         for tmpl_channel in &template.channels {
-            if let Some(channel) = self.project.channel_mut(tmpl_channel.index) {
+            if let Some(channel) = self.session.channel_mut(tmpl_channel.index) {
                 channel.label = tmpl_channel.label.clone();
                 channel.armed = tmpl_channel.armed;
             }
@@ -266,13 +266,13 @@ impl App {
         if self.is_recording() {
             return;
         }
-        if let Some(channel) = self.project.channel_mut(channel_index) {
+        if let Some(channel) = self.session.channel_mut(channel_index) {
             channel.armed = !channel.armed;
         }
     }
 
     pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
-        if let Some(channel) = self.project.channel_mut(channel_index) {
+        if let Some(channel) = self.session.channel_mut(channel_index) {
             channel.label = label;
         }
     }

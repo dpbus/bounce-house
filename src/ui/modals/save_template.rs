@@ -62,7 +62,7 @@ impl SaveTemplateModal {
     }
 
     pub fn draw(&self, frame: &mut Frame, app: &App) {
-        let n_channels = app.project.channels.len() as u16;
+        let n_channels = app.session.channels.len() as u16;
         let layout = pick_layout(n_channels);
         let inner = modal(frame, "Save Template", layout.width, layout.height);
 
@@ -82,7 +82,7 @@ impl SaveTemplateModal {
 
         frame.render_widget(Paragraph::new(header_lines(app)), chunks[0]);
         let channels: Vec<Line<'static>> = app
-            .project
+            .session
             .channels
             .iter()
             .map(channel_preview_row)
@@ -114,7 +114,7 @@ fn pick_layout(n_channels: u16) -> ContentLayout {
 
 fn header_lines(app: &App) -> Vec<Line<'static>> {
     let total = app.engine.channel_count();
-    let armed = app.project.armed_channels().count();
+    let armed = app.session.armed_channels().count();
     vec![
         labeled("Device:    ", app.engine.device_name().to_string()),
         labeled("Channels:  ", format!("{} armed / {}", armed, total)),

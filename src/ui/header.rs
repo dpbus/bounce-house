@@ -48,10 +48,10 @@ fn session_duration_spans(app: &App) -> Vec<Span<'static>> {
 }
 
 fn recording_folder(app: &App) -> Option<String> {
-    app.project
+    app.session
         .recording
         .as_ref()
-        .map(|_| app.project.name.clone())
+        .map(|_| app.session.name.clone())
 }
 
 fn flash_line(view: &View) -> Option<Line<'static>> {

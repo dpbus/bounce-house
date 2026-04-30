@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    pub projects_dir: PathBuf,
+    pub sessions_dir: PathBuf,
     pub bounces_dir: PathBuf,
     pub templates_dir: PathBuf,
 }
@@ -17,7 +17,7 @@ impl Default for Settings {
     fn default() -> Self {
         let home = home_dir();
         Self {
-            projects_dir: home.join("Music/BounceHouse/Projects"),
+            sessions_dir: home.join("Music/BounceHouse/Sessions"),
             bounces_dir: home.join("Music/BounceHouse/Bounces"),
             templates_dir: home.join("Music/BounceHouse/Templates"),
         }
@@ -38,7 +38,7 @@ impl Settings {
             settings.write(&path)?;
             settings
         };
-        fs::create_dir_all(&settings.projects_dir)?;
+        fs::create_dir_all(&settings.sessions_dir)?;
         fs::create_dir_all(&settings.bounces_dir)?;
         fs::create_dir_all(&settings.templates_dir)?;
         Ok(settings)
@@ -53,14 +53,14 @@ impl Settings {
     /// exists, then writes the settings file.
     pub fn update_paths(
         &mut self,
-        projects: &str,
+        sessions: &str,
         bounces: &str,
         templates: &str,
     ) -> io::Result<()> {
-        let projects = expand_home_dir(projects.trim());
+        let sessions = expand_home_dir(sessions.trim());
         let bounces = expand_home_dir(bounces.trim());
         let templates = expand_home_dir(templates.trim());
-        if projects.as_os_str().is_empty()
+        if sessions.as_os_str().is_empty()
             || bounces.as_os_str().is_empty()
             || templates.as_os_str().is_empty()
         {
@@ -69,10 +69,10 @@ impl Settings {
                 "paths cannot be empty",
             ));
         }
-        fs::create_dir_all(&projects)?;
+        fs::create_dir_all(&sessions)?;
         fs::create_dir_all(&bounces)?;
         fs::create_dir_all(&templates)?;
-        self.projects_dir = projects;
+        self.sessions_dir = sessions;
         self.bounces_dir = bounces;
         self.templates_dir = templates;
         self.save()
