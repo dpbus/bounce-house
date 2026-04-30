@@ -130,6 +130,62 @@ fn save_as_line(input: &TextInput) -> Line<'static> {
     Line::from(spans)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pick_layout_uses_one_column_for_small_counts() {
+        assert_eq!(pick_layout(0).cols, 1);
+        assert_eq!(pick_layout(1).cols, 1);
+        assert_eq!(pick_layout(8).cols, 1);
+    }
+
+    #[test]
+    fn pick_layout_grows_columns_with_channel_count() {
+        assert_eq!(pick_layout(9).cols, 2);
+        assert_eq!(pick_layout(20).cols, 2);
+        assert_eq!(pick_layout(21).cols, 3);
+        assert_eq!(pick_layout(40).cols, 3);
+    }
+
+    #[test]
+    fn pick_layout_caps_at_max_cols() {
+        let layout = pick_layout(100);
+        assert_eq!(layout.cols, MAX_COLS);
+        let bigger = pick_layout(1000);
+        assert_eq!(bigger.cols, MAX_COLS);
+    }
+
+    #[test]
+    fn pick_layout_height_covers_all_channels() {
+        // height = CONTENT_CHROME_ROWS + rows, where rows × cols ≥ n.
+        for n in [1u16, 7, 8, 9, 20, 21, 40, 41, 64, 100] {
+            let layout = pick_layout(n);
+            let rows = layout.height - CONTENT_CHROME_ROWS;
+            assert!(
+                rows * layout.cols >= n,
+                "n={n}: rows {rows} × cols {} < {n}",
+                layout.cols
+            );
+        }
+    }
+
+    #[test]
+    fn pick_layout_width_respects_minimum() {
+        // Even at the smallest channel count, header/hints fit.
+        let layout = pick_layout(1);
+        assert!(layout.width >= MIN_CONTENT_WIDTH);
+    }
+
+    #[test]
+    fn pick_layout_height_includes_chrome() {
+        // Empty channels case still allocates room for header + input + hints.
+        let layout = pick_layout(0);
+        assert!(layout.height > CONTENT_CHROME_ROWS);
+    }
+}
+
 fn hints_line() -> Line<'static> {
     let mut spans = Vec::new();
     spans.extend(key_hint("Enter", "save  ", Color::Cyan));

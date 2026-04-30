@@ -269,6 +269,46 @@ fn db_label(level: f32) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn db_label_marks_silence_as_negative_infinity() {
+        assert_eq!(db_label(0.0), "   -∞ dB");
+        assert_eq!(db_label(0.00005), "   -∞ dB");
+    }
+
+    #[test]
+    fn db_label_formats_unity_as_zero_db() {
+        let label = db_label(1.0);
+        assert!(label.contains("0.0 dB"), "got: {label}");
+    }
+
+    #[test]
+    fn db_label_negative_for_quieter_signals() {
+        let label = db_label(0.5);
+        // 0.5 → -6 dB.
+        assert!(label.contains("-6.0 dB"), "got: {label}");
+    }
+
+    #[test]
+    fn db_label_pads_to_consistent_width() {
+        // Each label should fit in 8 chars (5 number + " dB"), with 2-char padding.
+        let labels = [
+            db_label(0.0),
+            db_label(1.0),
+            db_label(0.1),
+            db_label(0.001),
+        ];
+        let widths: Vec<usize> = labels.iter().map(|l| l.chars().count()).collect();
+        assert!(
+            widths.windows(2).all(|w| w[0] == w[1]),
+            "labels not consistent width: {labels:?} ({widths:?})"
+        );
+    }
+}
+
 
 fn footer_line(renaming: bool) -> Line<'static> {
     let mut spans = Vec::new();
