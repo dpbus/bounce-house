@@ -42,7 +42,7 @@ mod tests {
         let start = Local::now() - Duration::seconds(2);
         let rec = fake(start, None);
         let secs = rec.elapsed_secs();
-        assert!(secs >= 2 && secs < 5, "expected ~2, got {secs}");
+        assert!((2..5).contains(&secs), "expected ~2, got {secs}");
     }
 
     #[test]
