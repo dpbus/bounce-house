@@ -3,10 +3,10 @@ use std::io;
 
 use chrono::{DateTime, Local};
 
-use crate::audio::{ArmedChannel, Device, EngineHandle, LevelObservation};
+use crate::audio::{Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
+use crate::capture::{Capture, CaptureError};
 use crate::project::Project;
-use crate::recording::Recording;
 use crate::settings::Settings;
 use crate::template::{self, Template};
 
@@ -25,6 +25,7 @@ pub struct App {
     pub engine: EngineHandle,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub bounce_pool: BouncePool,
+    pub capture: Option<Capture>,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
     pub level_history: VecDeque<LevelSample>,
@@ -52,6 +53,14 @@ pub enum AppError {
     NotIdle,
 }
 
+impl From<CaptureError> for AppError {
+    fn from(err: CaptureError) -> Self {
+        match err {
+            CaptureError::NothingArmed => AppError::NothingArmed,
+        }
+    }
+}
+
 impl App {
     pub fn new(device: Device, settings: Settings) -> Self {
         let (engine, levels_consumer) = EngineHandle::start(device);
@@ -63,6 +72,7 @@ impl App {
             engine,
             levels_consumer,
             bounce_pool: BouncePool::start(),
+            capture: None,
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
             level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
@@ -74,10 +84,15 @@ impl App {
     }
 
     pub fn is_recording(&self) -> bool {
-        self.project
-            .recording
-            .as_ref()
-            .is_some_and(|r| r.is_writing())
+        self.capture.is_some()
+    }
+
+    pub fn rel_sample_position(&self) -> Option<u64> {
+        self.capture.as_ref().map(|c| c.rel_sample_position())
+    }
+
+    pub fn relative_to_absolute(&self, rel: u64) -> Option<u64> {
+        self.capture.as_ref().map(|c| c.absolute(rel))
     }
 
     pub fn tick_display(&mut self) {
@@ -148,7 +163,7 @@ impl App {
     }
 
     pub fn start_recording(&mut self) -> Result<(), AppError> {
-        if self.is_recording() {
+        if self.capture.is_some() {
             return Err(AppError::NotIdle);
         }
         // If a recording already exists in this project (we stopped
@@ -158,62 +173,19 @@ impl App {
         if self.project.recording.is_some() {
             self.project = self.project.fork_for_new_recording(&self.settings);
         }
-        // Defensive: drop armed channels whose index is outside the engine's
-        // real channel count. Production sessions never produce out-of-range
-        // indices; the filter exists to keep DEBUG_CHANNELS-padded channels
-        // from reaching the disk writer (which sizes its frame to the engine).
-        let max_index = self.engine.channel_count();
-        let armed: Vec<ArmedChannel> = self
-            .project
-            .armed_channels()
-            .filter(|c| c.index < max_index)
-            .map(|c| ArmedChannel {
-                index: c.index,
-                label: c.label.clone(),
-            })
-            .collect();
-        if armed.is_empty() {
-            return Err(AppError::NothingArmed);
-        }
-
-        let consumer = self.engine.attach_consumer();
-        let start_sample = self.engine.sample_position();
-        let recording = Recording::start(
-            self.project.dir.clone(),
-            consumer,
-            self.project.sample_rate,
-            self.engine.channel_count(),
-            armed,
-            start_sample,
-        );
-        self.project.recording = Some(recording);
-        // Auto-mark recording start (rel sample 0).
-        self.project.timeline.mark(0);
+        let capture = Capture::start(&self.engine, &mut self.project)?;
+        self.capture = Some(capture);
         Ok(())
     }
 
     pub fn stop_recording(&mut self) {
-        if !self.is_recording() {
-            return;
-        }
-        // Detach consumer first: engine.detach_consumer is synchronous, so no
-        // further samples land in the rtrb after it returns.
-        self.engine.detach_consumer();
-        let abs_sample = self.engine.sample_position();
-        if let Some(r) = &mut self.project.recording {
-            r.stop();
-            let rel = abs_sample.saturating_sub(r.start_sample);
-            self.project.timeline.mark(rel);
+        if let Some(capture) = self.capture.take() {
+            capture.stop(&self.engine, &mut self.project);
         }
     }
 
     pub fn drop_marker(&mut self) {
-        if !self.is_recording() {
-            return;
-        }
-        let abs_sample = self.engine.sample_position();
-        if let Some(r) = &self.project.recording {
-            let rel = abs_sample.saturating_sub(r.start_sample);
+        if let Some(rel) = self.rel_sample_position() {
             self.project.timeline.mark(rel);
         }
     }
@@ -237,21 +209,25 @@ impl App {
         if trimmed.is_empty() {
             return;
         }
-        if self.project.recording.is_none() {
+        let Some(capture) = &self.capture else {
             return;
-        }
+        };
         if !self.project.timeline.create_take(trimmed) {
             return;
         }
         let take = self.project.timeline.takes().last().cloned();
-        let r = self.project.recording.as_ref().unwrap();
+        let recording = self
+            .project
+            .recording
+            .as_ref()
+            .expect("recording exists while capturing");
         let job = take.map(|take| BounceJob {
             take,
             sample_rate: self.project.sample_rate,
             bounces_dir: self.project.bounces_dir.clone(),
             filename_prefix: self.project.bounces_filename_prefix.clone(),
-            channel_files: r.channel_files.clone(),
-            flushed_samples: r.flushed_samples(),
+            channel_files: recording.channel_files.clone(),
+            flushed_samples: Some(capture.flushed_samples()),
         });
         if let Some(job) = job {
             self.bounce_pool.dispatch(job);
@@ -300,5 +276,4 @@ impl App {
             channel.label = label;
         }
     }
-
 }

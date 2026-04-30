@@ -73,7 +73,22 @@ impl Project {
         self.channels.iter().filter(|c| c.armed)
     }
 
-    /// Convert a recording-relative sample to seconds.
+    pub fn start_recording(&mut self, channel_files: Vec<PathBuf>) {
+        self.recording = Some(Recording {
+            started_at: Local::now(),
+            stopped_at: None,
+            channel_files,
+        });
+        self.timeline.mark(0);
+    }
+
+    pub fn stop_recording(&mut self, end_rel_sample: u64) {
+        if let Some(rec) = &mut self.recording {
+            rec.stopped_at = Some(Local::now());
+        }
+        self.timeline.mark(end_rel_sample);
+    }
+
     pub fn secs_at(&self, sample: u64) -> u64 {
         sample / (self.sample_rate.0 as u64).max(1)
     }
@@ -88,27 +103,13 @@ impl Project {
         self.recording.as_ref().map(|r| r.elapsed_secs()).unwrap_or(0)
     }
 
-    /// Seconds since the trailing marker on the timeline, given the
-    /// current absolute engine sample. Returns 0 when no recording is
-    /// active. Only meaningful during active recording — after stop
-    /// the engine sample position keeps advancing but markers don't.
-    pub fn since_last_marker_secs(&self, current_abs_sample: u64) -> u64 {
-        let Some(recording) = &self.recording else {
-            return 0;
-        };
+    pub fn since_last_marker_secs(&self, current_rel_sample: u64) -> u64 {
         let last = self
             .timeline
             .markers()
             .last()
             .map(|m| m.sample)
             .unwrap_or(0);
-        let rel = current_abs_sample.saturating_sub(recording.start_sample);
-        self.secs_at(rel.saturating_sub(last))
-    }
-
-    /// Convert a recording-relative sample to its engine-absolute
-    /// position. None if no recording has started.
-    pub fn relative_to_absolute(&self, rel_sample: u64) -> Option<u64> {
-        self.recording.as_ref().map(|r| r.start_sample + rel_sample)
+        self.secs_at(current_rel_sample.saturating_sub(last))
     }
 }

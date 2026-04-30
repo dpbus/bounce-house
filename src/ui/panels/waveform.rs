@@ -56,7 +56,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         .markers()
         .iter()
         .filter_map(|m| {
-            let abs = app.project.relative_to_absolute(m.sample)?;
+            let abs = app.relative_to_absolute(m.sample)?;
             let col = layout.sample_to_column(abs)?;
             Some((app.project.timeline.marker_color_index(m.sample), col))
         })

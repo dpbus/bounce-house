@@ -1,6 +1,7 @@
 mod app;
 mod audio;
 mod bounce;
+mod capture;
 mod channel;
 #[cfg(debug_assertions)]
 mod debug;

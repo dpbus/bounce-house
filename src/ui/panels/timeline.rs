@@ -105,11 +105,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         grid[0] = view_top_boundary_line(project.secs_at(boundary));
     }
 
-    let since_secs = if is_recording {
-        project.since_last_marker_secs(app.engine.sample_position())
-    } else {
-        0
-    };
+    let since_secs = app
+        .rel_sample_position()
+        .map(|rel| project.since_last_marker_secs(rel))
+        .unwrap_or(0);
     grid[layout.now_row] = now_line(layout.now_sec, since_secs, is_recording);
 
     frame.render_widget(Paragraph::new(grid), inner);

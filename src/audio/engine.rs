@@ -92,6 +92,10 @@ impl EngineHandle {
         self.sample_position.load(Ordering::Relaxed)
     }
 
+    pub(crate) fn sample_position_atomic(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.sample_position)
+    }
+
     pub fn attach_consumer(&self) -> rtrb::Consumer<f32> {
         let total_samples_buffer = self.channel_count() as usize
             * self.sample_rate().0 as usize
