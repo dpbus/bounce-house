@@ -208,6 +208,92 @@ impl View {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::take_naming::TakeNaming;
+
+    #[test]
+    fn new_view_has_no_active_overlays() {
+        let view = View::new();
+        assert!(view.active_modal.is_none());
+        assert!(view.take_naming().is_none());
+        assert!(!view.confirm_stop_active());
+        assert!(!view.confirm_quit_active());
+        assert!(view.recent_template_save().is_none());
+        assert!(view.recent_template_load().is_none());
+    }
+
+    #[test]
+    fn open_take_naming_sets_overlay() {
+        let mut view = View::new();
+        view.open_take_naming(TakeNaming::fresh());
+        assert!(view.take_naming().is_some());
+    }
+
+    #[test]
+    fn open_confirm_stop_and_quit_track_state() {
+        let mut view = View::new();
+        view.open_confirm_stop();
+        assert!(view.confirm_stop_active());
+        assert!(!view.confirm_quit_active());
+
+        let mut view = View::new();
+        view.open_confirm_quit();
+        assert!(view.confirm_quit_active());
+        assert!(!view.confirm_stop_active());
+    }
+
+    #[test]
+    fn flash_template_save_surfaces_through_recent() {
+        let mut view = View::new();
+        view.flash_template_save("drums".into());
+        assert_eq!(view.recent_template_save(), Some("drums"));
+    }
+
+    #[test]
+    fn flash_template_load_surfaces_through_recent() {
+        let mut view = View::new();
+        view.flash_template_load("vocals".into());
+        assert_eq!(view.recent_template_load(), Some("vocals"));
+    }
+
+    #[test]
+    fn flash_save_and_load_are_independent() {
+        let mut view = View::new();
+        view.flash_template_save("a".into());
+        view.flash_template_load("b".into());
+        assert_eq!(view.recent_template_save(), Some("a"));
+        assert_eq!(view.recent_template_load(), Some("b"));
+    }
+
+    #[test]
+    fn flash_expires_after_window() {
+        // Construct a Flash with an `at` time in the past.
+        let stale = Flash {
+            value: "old".to_string(),
+            at: Local::now() - Duration::seconds(TEMPLATE_FEEDBACK_SECS + 1),
+        };
+        assert!(stale.fresh_within(TEMPLATE_FEEDBACK_SECS).is_none());
+
+        let fresh = Flash::now("new".to_string());
+        assert_eq!(
+            fresh.fresh_within(TEMPLATE_FEEDBACK_SECS),
+            Some(&"new".to_string())
+        );
+    }
+
+    #[test]
+    fn recent_template_returns_none_after_window_passes() {
+        let mut view = View::new();
+        view.last_template_save = Some(Flash {
+            value: "old".to_string(),
+            at: Local::now() - Duration::seconds(TEMPLATE_FEEDBACK_SECS + 1),
+        });
+        assert!(view.recent_template_save().is_none());
+    }
+}
+
 fn dim_buffer(frame: &mut Frame) {
     let buffer = frame.buffer_mut();
     let area = buffer.area;

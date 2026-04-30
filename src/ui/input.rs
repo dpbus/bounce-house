@@ -21,6 +21,7 @@ pub fn handle(key: KeyEvent, app: &mut App, view: &mut View) -> Outcome {
 /// Decisions made by inspecting key + current state. Kept separate
 /// from `apply` so `decide` is testable against `&App` without needing
 /// the mutable plumbing.
+#[derive(Debug, PartialEq, Eq)]
 enum KeyAction {
     None,
     StartRecording,
@@ -39,8 +40,12 @@ enum KeyAction {
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
+    decide_with_state(app.is_recording(), key)
+}
+
+fn decide_with_state(is_recording: bool, key: KeyEvent) -> KeyAction {
     use KeyCode::*;
-    if app.is_recording() {
+    if is_recording {
         return match key.code {
             Esc | Char('r') | Char('R') => KeyAction::OpenConfirmStop,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
@@ -103,5 +108,198 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
         KeyAction::OpenHelp => {
             view.open_modal(ActiveModal::Help(HelpModal::new()));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn idle_r_starts_recording() {
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char('r'))),
+            KeyAction::StartRecording
+        );
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char('R'))),
+            KeyAction::StartRecording
+        );
+    }
+
+    #[test]
+    fn idle_q_or_esc_opens_quit_confirm() {
+        for code in [KeyCode::Char('q'), KeyCode::Char('Q'), KeyCode::Esc] {
+            assert_eq!(
+                decide_with_state(false, key(code)),
+                KeyAction::OpenConfirmQuit,
+                "unexpected for {code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn idle_c_opens_channel_picker() {
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char('c'))),
+            KeyAction::OpenChannelPicker
+        );
+    }
+
+    #[test]
+    fn idle_n_opens_retroactive_take_naming() {
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char('n'))),
+            KeyAction::OpenRetroactiveTakeNaming
+        );
+    }
+
+    #[test]
+    fn idle_ctrl_s_opens_save_template() {
+        assert_eq!(
+            decide_with_state(false, ctrl(KeyCode::Char('s'))),
+            KeyAction::OpenSaveTemplate
+        );
+        // Bare 's' should not.
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char('s'))),
+            KeyAction::None
+        );
+    }
+
+    #[test]
+    fn idle_ctrl_l_opens_load_template() {
+        assert_eq!(
+            decide_with_state(false, ctrl(KeyCode::Char('l'))),
+            KeyAction::OpenLoadTemplate
+        );
+    }
+
+    #[test]
+    fn idle_comma_opens_settings() {
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char(','))),
+            KeyAction::OpenSettings
+        );
+    }
+
+    #[test]
+    fn idle_question_opens_help() {
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char('?'))),
+            KeyAction::OpenHelp
+        );
+    }
+
+    #[test]
+    fn idle_w_cycles_waveform_window() {
+        assert_eq!(
+            decide_with_state(false, key(KeyCode::Char('w'))),
+            KeyAction::CycleWaveformWindow
+        );
+    }
+
+    #[test]
+    fn idle_unmapped_keys_yield_none() {
+        for code in [KeyCode::Char('x'), KeyCode::Tab, KeyCode::F(1), KeyCode::Up] {
+            assert_eq!(
+                decide_with_state(false, key(code)),
+                KeyAction::None,
+                "unexpected for {code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn recording_r_or_esc_opens_stop_confirm() {
+        for code in [KeyCode::Char('r'), KeyCode::Char('R'), KeyCode::Esc] {
+            assert_eq!(
+                decide_with_state(true, key(code)),
+                KeyAction::OpenConfirmStop,
+                "unexpected for {code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn recording_space_drops_marker() {
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Char(' '))),
+            KeyAction::DropMarker
+        );
+    }
+
+    #[test]
+    fn recording_t_marks_and_names_take() {
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Char('t'))),
+            KeyAction::MarkAndOpenTakeNaming
+        );
+    }
+
+    #[test]
+    fn recording_n_opens_retroactive_naming() {
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Char('n'))),
+            KeyAction::OpenRetroactiveTakeNaming
+        );
+    }
+
+    #[test]
+    fn recording_backspace_deletes_last_marker() {
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Backspace)),
+            KeyAction::DeleteLastMarker
+        );
+    }
+
+    #[test]
+    fn recording_q_does_nothing() {
+        // While recording, q is intentionally not bound — user must stop first.
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Char('q'))),
+            KeyAction::None
+        );
+    }
+
+    #[test]
+    fn recording_settings_and_templates_unbound() {
+        // No mid-recording template/settings access.
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Char(','))),
+            KeyAction::None
+        );
+        assert_eq!(
+            decide_with_state(true, ctrl(KeyCode::Char('s'))),
+            KeyAction::None
+        );
+        assert_eq!(
+            decide_with_state(true, ctrl(KeyCode::Char('l'))),
+            KeyAction::None
+        );
+    }
+
+    #[test]
+    fn recording_w_still_cycles_waveform() {
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Char('w'))),
+            KeyAction::CycleWaveformWindow
+        );
+    }
+
+    #[test]
+    fn recording_question_still_opens_help() {
+        assert_eq!(
+            decide_with_state(true, key(KeyCode::Char('?'))),
+            KeyAction::OpenHelp
+        );
     }
 }

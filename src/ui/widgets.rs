@@ -451,3 +451,176 @@ pub fn flow_columns(frame: &mut Frame, area: Rect, lines: &[Line<'static>], n_co
 pub fn linear_to_db_fraction(level: f32) -> f32 {
     db_to_fraction(to_db(level))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mmss_formats_minutes_and_seconds() {
+        assert_eq!(mmss(0), "0:00");
+        assert_eq!(mmss(5), "0:05");
+        assert_eq!(mmss(60), "1:00");
+        assert_eq!(mmss(125), "2:05");
+        assert_eq!(mmss(3599), "59:59");
+        assert_eq!(mmss(3600), "60:00"); // no hours rollover by design
+    }
+
+    #[test]
+    fn truncate_with_ellipsis_passes_through_short_strings() {
+        assert_eq!(truncate_with_ellipsis("foo", 5), "foo");
+        assert_eq!(truncate_with_ellipsis("foo", 3), "foo");
+    }
+
+    #[test]
+    fn truncate_with_ellipsis_appends_ellipsis_for_overflow() {
+        assert_eq!(truncate_with_ellipsis("hello", 4), "hel…");
+        assert_eq!(truncate_with_ellipsis("abcdef", 3), "ab…");
+    }
+
+    #[test]
+    fn truncate_with_ellipsis_counts_chars_not_bytes() {
+        // "café" has 4 chars but 5 bytes in UTF-8.
+        assert_eq!(truncate_with_ellipsis("café", 4), "café");
+        assert_eq!(truncate_with_ellipsis("café", 3), "ca…");
+    }
+
+    #[test]
+    fn truncate_with_ellipsis_handles_max_zero() {
+        // saturating_sub(1) yields 0; just an ellipsis with no body.
+        assert_eq!(truncate_with_ellipsis("anything", 0), "…");
+    }
+
+    #[test]
+    fn to_db_clamps_silence_to_floor() {
+        assert_eq!(to_db(0.0), SILENCE_DB);
+        assert_eq!(to_db(SILENCE_LEVEL / 2.0), SILENCE_DB);
+    }
+
+    #[test]
+    fn to_db_at_unity_is_zero() {
+        let db = to_db(1.0);
+        assert!(db.abs() < 0.001, "expected ~0 dB, got {db}");
+    }
+
+    #[test]
+    fn to_db_half_is_minus_six() {
+        let db = to_db(0.5);
+        assert!((db - (-6.02)).abs() < 0.05, "expected ~-6 dB, got {db}");
+    }
+
+    #[test]
+    fn db_to_fraction_at_floor_is_zero() {
+        assert_eq!(db_to_fraction(MIN_DB), 0.0);
+        assert_eq!(db_to_fraction(MIN_DB - 10.0), 0.0);
+    }
+
+    #[test]
+    fn db_to_fraction_at_zero_is_band_threshold() {
+        // -45..0 maps uniformly to the bottom 92%.
+        assert!((db_to_fraction(0.0) - 0.92).abs() < 0.001);
+    }
+
+    #[test]
+    fn db_to_fraction_at_max_db_caps_at_one() {
+        assert!((db_to_fraction(MAX_DB) - 1.0).abs() < 0.001);
+        assert_eq!(db_to_fraction(MAX_DB + 100.0), 1.0);
+    }
+
+    #[test]
+    fn db_to_fraction_clip_zone_is_top_eight_percent() {
+        // -3 dB sits inside the green band; +3 dB sits in the clip band.
+        let mid = db_to_fraction(-3.0);
+        let clip = db_to_fraction(3.0);
+        assert!(mid < 0.92);
+        assert!(clip > 0.92 && clip < 1.0);
+    }
+
+    #[test]
+    fn band_thresholds_are_warn_then_clip() {
+        let (warn, clip) = band_thresholds();
+        assert!(warn < clip);
+        assert!(warn > 0.0 && clip <= 1.0);
+    }
+
+    #[test]
+    fn band_positions_map_thresholds_to_cell_indices() {
+        // For a 50-cell meter the warn/clip positions must be in [0, 50].
+        let (warn, clip) = band_positions(50);
+        assert!(warn <= clip);
+        assert!(clip <= 50);
+    }
+
+    #[test]
+    fn db_to_fill_splits_into_full_cells_and_partial() {
+        // At unity (0 dB) we expect ~92% of cells full.
+        let (full, partial) = db_to_fill(0.0, 100);
+        assert_eq!(full, 92);
+        assert_eq!(partial, 0);
+    }
+
+    #[test]
+    fn db_to_fill_caps_partial_to_zero_when_full() {
+        // Above max — fully filled, no partial.
+        let (full, partial) = db_to_fill(MAX_DB + 10.0, 50);
+        assert_eq!(full, 50);
+        assert_eq!(partial, 0);
+    }
+
+    #[test]
+    fn position_color_promotes_through_bands() {
+        assert_eq!(position_color(0, 5, 8), BAND_GREEN);
+        assert_eq!(position_color(4, 5, 8), BAND_GREEN);
+        assert_eq!(position_color(5, 5, 8), BAND_YELLOW);
+        assert_eq!(position_color(7, 5, 8), BAND_YELLOW);
+        assert_eq!(position_color(8, 5, 8), BAND_RED);
+        assert_eq!(position_color(99, 5, 8), BAND_RED);
+    }
+
+    #[test]
+    fn spinner_glyph_advances_every_six_ticks() {
+        let frame_a = spinner_glyph(0);
+        let frame_b = spinner_glyph(5);
+        let frame_c = spinner_glyph(6);
+        assert_eq!(frame_a, frame_b);
+        assert_ne!(frame_a, frame_c);
+    }
+
+    #[test]
+    fn spinner_glyph_cycles_after_full_period() {
+        // 10 frames × 6 ticks = 60 ticks per full cycle.
+        assert_eq!(spinner_glyph(0), spinner_glyph(60));
+        assert_eq!(spinner_glyph(0), spinner_glyph(120));
+    }
+
+    #[test]
+    fn take_color_is_deterministic_across_calls() {
+        // The first random offset is set on first call; all subsequent
+        // calls with the same idx return the same color.
+        let a = take_color(0);
+        let b = take_color(0);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn take_color_differs_across_consecutive_indices() {
+        // The golden-angle stride should produce visually different
+        // colors for adjacent indices.
+        let c0 = take_color(0);
+        let c1 = take_color(1);
+        let c2 = take_color(2);
+        assert_ne!(c0, c1);
+        assert_ne!(c1, c2);
+    }
+
+    #[test]
+    fn linear_to_db_fraction_silence_is_zero() {
+        assert_eq!(linear_to_db_fraction(0.0), 0.0);
+    }
+
+    #[test]
+    fn linear_to_db_fraction_unity_is_band_threshold() {
+        let frac = linear_to_db_fraction(1.0);
+        assert!((frac - 0.92).abs() < 0.001);
+    }
+}
