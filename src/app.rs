@@ -176,7 +176,7 @@ impl App {
             return Err(AppError::NothingArmed);
         }
 
-        let consumer = self.engine.start_recording();
+        let consumer = self.engine.attach_consumer();
         let start_sample = self.engine.sample_position();
         let recording = Recording::start(
             self.project.dir.clone(),
@@ -196,9 +196,9 @@ impl App {
         if !self.is_recording() {
             return;
         }
-        // Detach producer first: engine.stop_recording is synchronous, so no
+        // Detach consumer first: engine.detach_consumer is synchronous, so no
         // further samples land in the rtrb after it returns.
-        self.engine.stop_recording();
+        self.engine.detach_consumer();
         let abs_sample = self.engine.sample_position();
         if let Some(r) = &mut self.project.recording {
             r.stop();

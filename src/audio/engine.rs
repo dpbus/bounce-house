@@ -23,8 +23,8 @@ pub struct EngineHandle {
 }
 
 enum Command {
-    StartRecording { raw_producer: rtrb::Producer<f32> },
-    StopRecording { ack_tx: Sender<()> },
+    AttachConsumer { producer: rtrb::Producer<f32> },
+    DetachConsumer { ack_tx: Sender<()> },
 }
 
 /// Audio-thread state. Lives in the cpal callback closure; owns working
@@ -62,7 +62,7 @@ impl EngineHandle {
             let frames = engine.scan_peaks(data);
             let callback_start_sample = engine.advance_sample_position(frames);
             engine.publish_observation(callback_start_sample);
-            engine.push_raw_if_recording(data);
+            engine.push_raw_if_attached(data);
         });
 
         stream.play().expect("Failed to start audio stream");
@@ -92,21 +92,21 @@ impl EngineHandle {
         self.sample_position.load(Ordering::Relaxed)
     }
 
-    pub fn start_recording(&self) -> rtrb::Consumer<f32> {
+    pub fn attach_consumer(&self) -> rtrb::Consumer<f32> {
         let total_samples_buffer = self.channel_count() as usize
             * self.sample_rate().0 as usize
             * RECORDING_BUFFER_SECONDS;
-        let (raw_producer, raw_consumer) = rtrb::RingBuffer::new(total_samples_buffer);
+        let (producer, consumer) = rtrb::RingBuffer::new(total_samples_buffer);
         self.cmd_tx
-            .send(Command::StartRecording { raw_producer })
+            .send(Command::AttachConsumer { producer })
             .expect("audio thread dropped");
-        raw_consumer
+        consumer
     }
 
-    pub fn stop_recording(&self) {
+    pub fn detach_consumer(&self) {
         let (ack_tx, ack_rx) = mpsc::channel::<()>();
         self.cmd_tx
-            .send(Command::StopRecording { ack_tx })
+            .send(Command::DetachConsumer { ack_tx })
             .expect("audio thread dropped");
         let _ = ack_rx.recv();
     }
@@ -116,10 +116,10 @@ impl Engine {
     fn drain_commands(&mut self, cmd_rx: &Receiver<Command>) {
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                Command::StartRecording { raw_producer } => {
-                    self.raw_producer = Some(raw_producer);
+                Command::AttachConsumer { producer } => {
+                    self.raw_producer = Some(producer);
                 }
-                Command::StopRecording { ack_tx } => {
+                Command::DetachConsumer { ack_tx } => {
                     self.raw_producer = None;
                     let _ = ack_tx.send(());
                 }
@@ -160,7 +160,7 @@ impl Engine {
         });
     }
 
-    fn push_raw_if_recording(&mut self, data: &[f32]) {
+    fn push_raw_if_attached(&mut self, data: &[f32]) {
         let Some(producer) = &mut self.raw_producer else {
             return;
         };
