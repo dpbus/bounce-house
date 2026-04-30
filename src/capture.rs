@@ -1,7 +1,9 @@
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::audio::{ArmedChannel, DiskWriter, EngineHandle};
+use crate::audio::{ChannelOutput, DiskWriter, EngineHandle};
 use crate::session::Session;
 
 #[derive(Debug)]
@@ -18,16 +20,25 @@ pub struct Capture {
 impl Capture {
     pub fn start(engine: &EngineHandle, session: &mut Session) -> Result<Self, CaptureError> {
         let max_index = engine.channel_count();
-        let armed: Vec<ArmedChannel> = session
+        let (outputs, channel_files): (Vec<ChannelOutput>, Vec<PathBuf>) = session
             .armed_channels()
             .filter(|c| c.index < max_index)
-            .map(|c| ArmedChannel {
-                index: c.index,
-                label: c.label.clone(),
+            .map(|c| {
+                let output = ChannelOutput {
+                    channel: c.index,
+                    path: session.channel_path(c),
+                };
+                (output, session.channel_subpath(c))
             })
-            .collect();
-        if armed.is_empty() {
+            .unzip();
+        if outputs.is_empty() {
             return Err(CaptureError::NothingArmed);
+        }
+
+        for output in &outputs {
+            if let Some(parent) = output.path.parent() {
+                fs::create_dir_all(parent).expect("Failed to create channel dir");
+            }
         }
 
         let start_sample = engine.sample_position();
@@ -35,12 +46,10 @@ impl Capture {
         let consumer = engine.attach_consumer();
         let writer = DiskWriter::start(
             consumer,
-            session.dir.clone(),
             engine.sample_rate(),
             engine.channel_count(),
-            armed,
+            outputs,
         );
-        let channel_files = writer.channel_files().to_vec();
         session.start_recording(channel_files);
 
         Ok(Self {

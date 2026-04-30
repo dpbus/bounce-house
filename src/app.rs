@@ -219,12 +219,17 @@ impl App {
             .recording
             .as_ref()
             .expect("recording exists while capturing");
+        let channel_files = recording
+            .channel_files
+            .iter()
+            .map(|rel| self.session.dir.join(rel))
+            .collect();
         let job = BounceJob {
             take,
             sample_rate: self.session.sample_rate(),
             bounces_dir: self.session.bounces_dir.clone(),
             filename_prefix: self.session.bounces_filename_prefix.clone(),
-            channel_files: recording.channel_files.clone(),
+            channel_files,
             flushed_samples: Some(capture.flushed_samples()),
         };
         self.bounce_pool.dispatch(job);

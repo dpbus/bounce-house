@@ -1,15 +1,17 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::Local;
-
-use crate::channel::Channel;
-use crate::recording::Recording;
-use crate::settings::Settings;
 use uuid::Uuid;
 
 use crate::bounce::BounceEvent;
+use crate::channel::Channel;
+use crate::paths;
+use crate::recording::Recording;
+use crate::settings::Settings;
 use crate::timeline::{BounceStatus, Take, Timeline};
 use crate::units::SampleRate;
+
+const CHANNELS_DIR: &str = "channels";
 
 /// A single recording session: channels (with mix), the timeline of
 /// markers and takes, the on-disk paths where its audio lives, and the
@@ -80,6 +82,16 @@ impl Session {
 
     pub fn armed_channels(&self) -> impl Iterator<Item = &Channel> + '_ {
         self.channels.iter().filter(|c| c.armed)
+    }
+
+    /// Absolute on-disk path for a channel's WAV file.
+    pub fn channel_path(&self, channel: &Channel) -> PathBuf {
+        self.dir.join(self.channel_subpath(channel))
+    }
+
+    /// Path relative to `self.dir` — the form stored on `Recording`.
+    pub fn channel_subpath(&self, channel: &Channel) -> PathBuf {
+        Path::new(CHANNELS_DIR).join(channel_filename(channel))
     }
 
     pub fn last_marker_unbound(&self) -> bool {
@@ -168,6 +180,15 @@ impl Session {
     #[cfg(debug_assertions)]
     pub fn debug_push_channel(&mut self, channel: Channel) {
         self.channels.push(channel);
+    }
+}
+
+fn channel_filename(channel: &Channel) -> String {
+    match channel.label.as_deref().map(str::trim) {
+        Some(label) if !label.is_empty() => {
+            format!("ch{:02}-{}.wav", channel.index, paths::filename_safe(label))
+        }
+        _ => format!("ch{:02}.wav", channel.index),
     }
 }
 
@@ -376,5 +397,52 @@ mod tests {
         assert_ne!(original.name, forked.name);
         assert_ne!(original.dir, forked.dir);
         assert_ne!(original.bounces_dir, forked.bounces_dir);
+    }
+
+    fn ch(index: u16, label: Option<&str>) -> Channel {
+        Channel {
+            index,
+            label: label.map(String::from),
+            armed: true,
+        }
+    }
+
+    #[test]
+    fn channel_filename_uses_label_when_present() {
+        assert_eq!(channel_filename(&ch(7, Some("Kick"))), "ch07-Kick.wav");
+    }
+
+    #[test]
+    fn channel_filename_omits_label_when_blank() {
+        assert_eq!(channel_filename(&ch(3, None)), "ch03.wav");
+        assert_eq!(channel_filename(&ch(3, Some("   "))), "ch03.wav");
+    }
+
+    #[test]
+    fn channel_filename_sanitizes_unsafe_label_chars() {
+        assert_eq!(
+            channel_filename(&ch(0, Some("kick/snare"))),
+            "ch00-kick_snare.wav"
+        );
+    }
+
+    #[test]
+    fn channel_subpath_nests_under_channels_dir() {
+        let dir = tempdir().unwrap();
+        let session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
+        assert_eq!(
+            session.channel_subpath(&ch(0, Some("Kick"))),
+            std::path::PathBuf::from("channels/ch00-Kick.wav")
+        );
+    }
+
+    #[test]
+    fn channel_path_joins_session_dir_with_subpath() {
+        let dir = tempdir().unwrap();
+        let session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
+        assert_eq!(
+            session.channel_path(&ch(2, None)),
+            session.dir.join("channels").join("ch02.wav")
+        );
     }
 }
