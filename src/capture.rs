@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -19,21 +18,17 @@ pub struct Capture {
 
 impl Capture {
     pub fn start(engine: &EngineHandle, session: &mut Session) -> Result<Self, CaptureError> {
-        let max_index = engine.channel_count();
-        let (outputs, channel_files): (Vec<ChannelOutput>, Vec<PathBuf>) = session
-            .armed_channels()
-            .filter(|c| c.index < max_index)
-            .map(|c| {
-                let output = ChannelOutput {
-                    channel: c.index,
-                    path: session.channel_path(c),
-                };
-                (output, session.channel_subpath(c))
+        let recorded = session
+            .start_recording()
+            .ok_or(CaptureError::NothingArmed)?;
+
+        let outputs: Vec<ChannelOutput> = recorded
+            .iter()
+            .map(|r| ChannelOutput {
+                channel: r.index,
+                path: session.dir().join(&r.file),
             })
-            .unzip();
-        if outputs.is_empty() {
-            return Err(CaptureError::NothingArmed);
-        }
+            .collect();
 
         for output in &outputs {
             if let Some(parent) = output.path.parent() {
@@ -50,7 +45,6 @@ impl Capture {
             engine.channel_count(),
             outputs,
         );
-        session.start_recording(channel_files);
 
         Ok(Self {
             start_sample,

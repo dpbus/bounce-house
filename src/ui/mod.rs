@@ -54,8 +54,6 @@ fn bootstrap(
     };
 
     let mut app = App::new(device, settings);
-    #[cfg(debug_assertions)]
-    crate::debug::pad_channels_from_env(&mut app);
     let mut view = View::new();
     if let Some(t) = template {
         let name = t.name.clone();

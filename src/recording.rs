@@ -5,7 +5,19 @@ use chrono::{DateTime, Local};
 pub struct Recording {
     pub started_at: DateTime<Local>,
     pub stopped_at: Option<DateTime<Local>>,
-    pub channel_files: Vec<PathBuf>,
+    pub channels: Vec<RecordedChannel>,
+}
+
+/// One channel's slot in a Recording: a snapshot at record-start time,
+/// plus the WAV file it was captured to (path relative to the session
+/// dir). Index and label are frozen — later edits to Session.channels
+/// don't reach back here.
+#[allow(dead_code)] // index + label become read sites when persistence lands
+#[derive(Clone)]
+pub struct RecordedChannel {
+    pub index: u16,
+    pub label: Option<String>,
+    pub file: PathBuf,
 }
 
 impl Recording {
@@ -24,7 +36,7 @@ mod tests {
         Recording {
             started_at,
             stopped_at,
-            channel_files: vec![],
+            channels: vec![],
         }
     }
 

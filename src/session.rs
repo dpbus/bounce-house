@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::bounce::BounceEvent;
 use crate::channel::Channel;
 use crate::paths;
-use crate::recording::Recording;
+use crate::recording::{RecordedChannel, Recording};
 use crate::settings::Settings;
 use crate::timeline::{BounceStatus, Take, Timeline};
 use crate::units::SampleRate;
@@ -84,22 +84,21 @@ impl Session {
         self.channels.iter().filter(|c| c.armed)
     }
 
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
     /// Absolute paths to the recording's channel WAV files, in order.
     /// Empty if no recording exists.
     pub fn recording_channel_paths(&self) -> Vec<PathBuf> {
         self.recording
             .as_ref()
-            .map(|r| r.channel_files.iter().map(|p| self.dir.join(p)).collect())
+            .map(|r| r.channels.iter().map(|c| self.dir.join(&c.file)).collect())
             .unwrap_or_default()
     }
 
-    /// Absolute on-disk path for a channel's WAV file.
-    pub fn channel_path(&self, channel: &Channel) -> PathBuf {
-        self.dir.join(self.channel_subpath(channel))
-    }
-
     /// Path relative to `self.dir` — the form stored on `Recording`.
-    pub fn channel_subpath(&self, channel: &Channel) -> PathBuf {
+    fn channel_subpath(&self, channel: &Channel) -> PathBuf {
         Path::new(CHANNELS_DIR).join(channel_filename(channel))
     }
 
@@ -159,13 +158,27 @@ impl Session {
         }
     }
 
-    pub fn start_recording(&mut self, channel_files: Vec<PathBuf>) {
+    /// Snapshots the currently armed channels into a Recording. Returns
+    /// the snapshot, or None if nothing's armed (no Recording is created).
+    pub fn start_recording(&mut self) -> Option<Vec<RecordedChannel>> {
+        let channels: Vec<RecordedChannel> = self
+            .armed_channels()
+            .map(|c| RecordedChannel {
+                index: c.index,
+                label: c.label.clone(),
+                file: self.channel_subpath(c),
+            })
+            .collect();
+        if channels.is_empty() {
+            return None;
+        }
         self.recording = Some(Recording {
             started_at: Local::now(),
             stopped_at: None,
-            channel_files,
+            channels: channels.clone(),
         });
         self.timeline.mark(0);
+        Some(channels)
     }
 
     pub fn stop_recording(&mut self, end_rel_sample: u64) {
@@ -182,13 +195,6 @@ impl Session {
             .as_ref()
             .map(|r| r.elapsed_secs())
             .unwrap_or(0)
-    }
-
-    /// Debug-only escape hatch for padding the session with synthetic
-    /// channels for visual UI testing. See `crate::debug`.
-    #[cfg(debug_assertions)]
-    pub fn debug_push_channel(&mut self, channel: Channel) {
-        self.channels.push(channel);
     }
 }
 
@@ -300,15 +306,21 @@ mod tests {
     }
 
     #[test]
-    fn start_recording_populates_recording_and_drops_zero_mark() {
+    fn start_recording_snapshots_armed_channels() {
         let dir = tempdir().unwrap();
-        let mut session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
-        let files = vec![PathBuf::from("/tmp/ch0.wav")];
+        let mut session = Session::new(2, SampleRate(48_000), &settings_in(dir.path()));
+        session.set_channel_armed(0, true);
+        session.set_channel_label(0, Some("Kick".into()));
 
-        session.start_recording(files.clone());
+        let recorded = session.start_recording().expect("armed channel exists");
+
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].index, 0);
+        assert_eq!(recorded[0].label.as_deref(), Some("Kick"));
+        assert_eq!(recorded[0].file, PathBuf::from("channels/ch00-Kick.wav"));
 
         let rec = session.recording.as_ref().expect("recording set");
-        assert_eq!(rec.channel_files, files);
+        assert_eq!(rec.channels.len(), 1);
         assert!(rec.stopped_at.is_none());
 
         let markers: Vec<u64> = session
@@ -321,10 +333,20 @@ mod tests {
     }
 
     #[test]
+    fn start_recording_returns_none_when_nothing_armed() {
+        let dir = tempdir().unwrap();
+        let mut session = Session::new(2, SampleRate(48_000), &settings_in(dir.path()));
+        assert!(session.start_recording().is_none());
+        assert!(session.recording.is_none());
+        assert!(session.timeline.markers().is_empty());
+    }
+
+    #[test]
     fn stop_recording_stamps_stopped_at_and_drops_end_mark() {
         let dir = tempdir().unwrap();
         let mut session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
-        session.start_recording(vec![]);
+        session.set_channel_armed(0, true);
+        session.start_recording().expect("armed");
 
         session.stop_recording(96_000);
 
@@ -383,7 +405,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let settings = settings_in(dir.path());
         let mut original = Session::new(1, SampleRate(48_000), &settings);
-        original.start_recording(vec![PathBuf::from("/tmp/old.wav")]);
+        original.set_channel_armed(0, true);
+        original.start_recording().expect("armed");
         original.stop_recording(48_000);
 
         let forked = original.fork_for_new_recording(&settings);
@@ -442,16 +465,6 @@ mod tests {
         assert_eq!(
             session.channel_subpath(&ch(0, Some("Kick"))),
             std::path::PathBuf::from("channels/ch00-Kick.wav")
-        );
-    }
-
-    #[test]
-    fn channel_path_joins_session_dir_with_subpath() {
-        let dir = tempdir().unwrap();
-        let session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
-        assert_eq!(
-            session.channel_path(&ch(2, None)),
-            session.dir.join("channels").join("ch02.wav")
         );
     }
 }

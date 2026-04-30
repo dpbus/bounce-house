@@ -3,8 +3,6 @@ mod audio;
 mod bounce;
 mod capture;
 mod channel;
-#[cfg(debug_assertions)]
-mod debug;
 mod paths;
 mod recording;
 mod session;

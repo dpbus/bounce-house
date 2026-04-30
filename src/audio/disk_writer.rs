@@ -93,6 +93,11 @@ fn write_to_disk(
         sample_format: SampleFormat::Float,
     };
 
+    debug_assert!(
+        outputs.iter().all(|o| (o.channel as usize) < total),
+        "ChannelOutput.channel must be < total_channel_count"
+    );
+
     let mut writers = open_writers(&outputs, spec);
     let mut frame = vec![0.0f32; total];
     let mut filled = 0;
