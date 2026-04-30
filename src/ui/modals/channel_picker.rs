@@ -269,6 +269,19 @@ fn db_label(level: f32) -> String {
     }
 }
 
+fn footer_line(renaming: bool) -> Line<'static> {
+    let mut spans = Vec::new();
+    if renaming {
+        spans.extend(key_hint("Enter", "save  ", Color::Cyan));
+        spans.extend(key_hint("Esc", "cancel", Color::Cyan));
+    } else {
+        spans.extend(key_hint("Space", "arm  ", Color::Cyan));
+        spans.extend(key_hint("Tab", "rename  ", Color::Cyan));
+        spans.extend(key_hint("Esc", "close", Color::Cyan));
+    }
+    Line::from(spans)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,18 +320,4 @@ mod tests {
             "labels not consistent width: {labels:?} ({widths:?})"
         );
     }
-}
-
-
-fn footer_line(renaming: bool) -> Line<'static> {
-    let mut spans = Vec::new();
-    if renaming {
-        spans.extend(key_hint("Enter", "save  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "cancel", Color::Cyan));
-    } else {
-        spans.extend(key_hint("Space", "arm  ", Color::Cyan));
-        spans.extend(key_hint("Tab", "rename  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "close", Color::Cyan));
-    }
-    Line::from(spans)
 }

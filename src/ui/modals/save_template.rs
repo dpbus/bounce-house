@@ -130,6 +130,13 @@ fn save_as_line(input: &TextInput) -> Line<'static> {
     Line::from(spans)
 }
 
+fn hints_line() -> Line<'static> {
+    let mut spans = Vec::new();
+    spans.extend(key_hint("Enter", "save  ", Color::Cyan));
+    spans.extend(key_hint("Esc", "cancel", Color::Cyan));
+    Line::from(spans)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,11 +191,4 @@ mod tests {
         let layout = pick_layout(0);
         assert!(layout.height > CONTENT_CHROME_ROWS);
     }
-}
-
-fn hints_line() -> Line<'static> {
-    let mut spans = Vec::new();
-    spans.extend(key_hint("Enter", "save  ", Color::Cyan));
-    spans.extend(key_hint("Esc", "cancel", Color::Cyan));
-    Line::from(spans)
 }

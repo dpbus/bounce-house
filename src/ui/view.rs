@@ -208,6 +208,32 @@ impl View {
     }
 }
 
+fn dim_buffer(frame: &mut Frame) {
+    let buffer = frame.buffer_mut();
+    let area = buffer.area;
+    for y in area.y..area.bottom() {
+        for x in area.x..area.right() {
+            buffer[(x, y)].modifier.insert(Modifier::DIM);
+        }
+    }
+}
+
+fn outer_block(app: &App) -> Block<'static> {
+    let (title, color) = if app.is_recording() {
+        (
+            format!(" ● Recording — {} ", app.engine.device_name()),
+            Color::Red,
+        )
+    } else {
+        (format!(" {} ", app.engine.device_name()), Color::Cyan)
+    };
+    Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .padding(Padding::new(2, 2, 1, 1))
+        .border_style(Style::default().fg(color))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,30 +318,4 @@ mod tests {
         });
         assert!(view.recent_template_save().is_none());
     }
-}
-
-fn dim_buffer(frame: &mut Frame) {
-    let buffer = frame.buffer_mut();
-    let area = buffer.area;
-    for y in area.y..area.bottom() {
-        for x in area.x..area.right() {
-            buffer[(x, y)].modifier.insert(Modifier::DIM);
-        }
-    }
-}
-
-fn outer_block(app: &App) -> Block<'static> {
-    let (title, color) = if app.is_recording() {
-        (
-            format!(" ● Recording — {} ", app.engine.device_name()),
-            Color::Red,
-        )
-    } else {
-        (format!(" {} ", app.engine.device_name()), Color::Cyan)
-    };
-    Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .padding(Padding::new(2, 2, 1, 1))
-        .border_style(Style::default().fg(color))
 }

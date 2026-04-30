@@ -318,6 +318,30 @@ fn encode_tail(
         .map_err(|e| format!("write tail: {}", e))
 }
 
+fn unique_mp3_path(dir: &Path, prefix: Option<&str>, take_name: &str) -> PathBuf {
+    let trimmed = take_name.trim();
+    let safe = if trimmed.is_empty() {
+        "take".to_string()
+    } else {
+        crate::sanitize::filename_safe(trimmed)
+    };
+    let stem = match prefix {
+        Some(p) if !p.is_empty() => format!("{}_{}", p, safe),
+        _ => safe,
+    };
+    let base = dir.join(format!("{}.mp3", stem));
+    if !base.exists() {
+        return base;
+    }
+    for n in 2.. {
+        let candidate = dir.join(format!("{}-{}.mp3", stem, n));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,28 +533,4 @@ mod tests {
         bounce_take(&job).expect("bounce_take should succeed");
         assert!(bounces_dir.exists(), "bounces_dir was not created");
     }
-}
-
-fn unique_mp3_path(dir: &Path, prefix: Option<&str>, take_name: &str) -> PathBuf {
-    let trimmed = take_name.trim();
-    let safe = if trimmed.is_empty() {
-        "take".to_string()
-    } else {
-        crate::sanitize::filename_safe(trimmed)
-    };
-    let stem = match prefix {
-        Some(p) if !p.is_empty() => format!("{}_{}", p, safe),
-        _ => safe,
-    };
-    let base = dir.join(format!("{}.mp3", stem));
-    if !base.exists() {
-        return base;
-    }
-    for n in 2.. {
-        let candidate = dir.join(format!("{}-{}.mp3", stem, n));
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    unreachable!()
 }
