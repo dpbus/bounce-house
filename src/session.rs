@@ -5,6 +5,8 @@ use chrono::Local;
 use crate::channel::Channel;
 use crate::recording::Recording;
 use crate::settings::Settings;
+use uuid::Uuid;
+
 use crate::timeline::{BounceStatus, Take, Timeline};
 use crate::units::SampleRate;
 
@@ -118,7 +120,7 @@ impl Session {
         self.timeline.takes().last().cloned()
     }
 
-    pub fn set_bounce_status(&mut self, take_id: u32, status: BounceStatus) {
+    pub fn set_bounce_status(&mut self, take_id: Uuid, status: BounceStatus) {
         self.timeline.set_bounce_status(take_id, status);
     }
 

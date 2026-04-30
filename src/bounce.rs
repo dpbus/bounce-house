@@ -12,6 +12,7 @@ use hound::WavReader;
 use mp3lame_encoder::{
     Bitrate, Builder, DualPcm, Encoder, FlushNoGap, Quality, max_required_buffer_size,
 };
+use uuid::Uuid;
 
 use crate::timeline::{BounceStatus, Take};
 use crate::units::SampleRate;
@@ -43,7 +44,7 @@ pub struct BounceJob {
 }
 
 pub struct BounceUpdate {
-    pub take_id: u32,
+    pub take_id: Uuid,
     pub status: BounceStatus,
 }
 
@@ -369,7 +370,7 @@ mod tests {
 
     fn fake_take(start: u64, end: u64) -> Take {
         Take {
-            id: 0,
+            id: Uuid::new_v4(),
             name: "test".into(),
             start_sample: start,
             end_sample: end,

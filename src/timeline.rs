@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use uuid::Uuid;
+
 use crate::units::SampleRate;
 
 #[derive(Clone, Copy, Debug)]
@@ -21,7 +23,7 @@ pub enum BounceStatus {
 
 #[derive(Clone, Debug)]
 pub struct Take {
-    pub id: u32,
+    pub id: Uuid,
     pub name: String,
     pub start_sample: u64,
     pub end_sample: u64,
@@ -36,8 +38,6 @@ pub struct Timeline {
     sample_rate: SampleRate,
     markers: Vec<Marker>,
     takes: Vec<Take>,
-    next_take_id: u32,
-    next_color: u8,
 }
 
 impl Timeline {
@@ -46,8 +46,6 @@ impl Timeline {
             sample_rate,
             markers: Vec::new(),
             takes: Vec::new(),
-            next_take_id: 0,
-            next_color: 0,
         }
     }
 
@@ -76,9 +74,11 @@ impl Timeline {
         self.secs_at(current_rel_sample.saturating_sub(last))
     }
 
-    /// Color index the next take will be assigned.
     pub fn next_take_color(&self) -> u8 {
-        self.next_color
+        self.takes
+            .last()
+            .map(|t| t.color_index.wrapping_add(1))
+            .unwrap_or(0)
     }
 
     pub fn mark(&mut self, sample: u64) {
@@ -117,20 +117,18 @@ impl Timeline {
             return false;
         };
         let take = Take {
-            id: self.next_take_id,
+            id: Uuid::new_v4(),
             name,
             start_sample: second_last.sample,
             end_sample: last.sample,
-            color_index: self.next_color,
+            color_index: self.next_take_color(),
             bounce_status: BounceStatus::Pending,
         };
-        self.next_color = self.next_color.wrapping_add(1);
-        self.next_take_id = self.next_take_id.wrapping_add(1);
         self.takes.push(take);
         true
     }
 
-    pub fn set_bounce_status(&mut self, take_id: u32, status: BounceStatus) -> bool {
+    pub fn set_bounce_status(&mut self, take_id: Uuid, status: BounceStatus) -> bool {
         if let Some(take) = self.takes.iter_mut().find(|t| t.id == take_id) {
             take.bounce_status = status;
             true
@@ -240,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn create_take_increments_color_index_and_id() {
+    fn create_take_assigns_unique_ids_and_advancing_colors() {
         let mut t = timeline();
         t.mark(0);
         t.mark(48_000);
@@ -249,9 +247,8 @@ mod tests {
         t.create_take("b".into());
 
         let takes = t.takes();
-        assert_eq!(takes[0].id, 0);
+        assert_ne!(takes[0].id, takes[1].id);
         assert_eq!(takes[0].color_index, 0);
-        assert_eq!(takes[1].id, 1);
         assert_eq!(takes[1].color_index, 1);
         assert_eq!(t.next_take_color(), 2);
     }
@@ -310,7 +307,7 @@ mod tests {
     #[test]
     fn set_bounce_status_returns_false_for_unknown_take() {
         let mut t = timeline();
-        assert!(!t.set_bounce_status(999, BounceStatus::Pending));
+        assert!(!t.set_bounce_status(Uuid::new_v4(), BounceStatus::Pending));
     }
 
     #[test]
