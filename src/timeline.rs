@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::units::SampleRate;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Marker {
     pub sample: u64,
@@ -28,11 +30,10 @@ pub struct Take {
 }
 
 /// Marker/take structure laid down against a recording, in
-/// recording-relative samples. Time math (sample → seconds) lives on
-/// Recording, which owns the sample rate; Timeline only knows about the
-/// shape of what's been captured.
-#[derive(Default)]
+/// recording-relative samples. Owns the sample rate and answers all
+/// time-domain questions about the project's events.
 pub struct Timeline {
+    sample_rate: SampleRate,
     markers: Vec<Marker>,
     takes: Vec<Take>,
     next_take_id: u32,
@@ -40,8 +41,18 @@ pub struct Timeline {
 }
 
 impl Timeline {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(sample_rate: SampleRate) -> Self {
+        Self {
+            sample_rate,
+            markers: Vec::new(),
+            takes: Vec::new(),
+            next_take_id: 0,
+            next_color: 0,
+        }
+    }
+
+    pub fn sample_rate(&self) -> SampleRate {
+        self.sample_rate
     }
 
     pub fn markers(&self) -> &[Marker] {
@@ -50,6 +61,19 @@ impl Timeline {
 
     pub fn takes(&self) -> &[Take] {
         &self.takes
+    }
+
+    pub fn secs_at(&self, sample: u64) -> u64 {
+        sample / (self.sample_rate.0 as u64).max(1)
+    }
+
+    pub fn duration_secs(&self, start_sample: u64, end_sample: u64) -> u64 {
+        self.secs_at(end_sample.saturating_sub(start_sample))
+    }
+
+    pub fn since_last_marker_secs(&self, current_rel_sample: u64) -> u64 {
+        let last = self.markers.last().map(|m| m.sample).unwrap_or(0);
+        self.secs_at(current_rel_sample.saturating_sub(last))
     }
 
     /// Color index the next take will be assigned.

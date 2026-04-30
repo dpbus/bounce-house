@@ -24,7 +24,6 @@ pub struct Project {
     /// prepended to each filename for a flat layout.
     pub bounces_dir: PathBuf,
     pub bounces_filename_prefix: Option<String>,
-    pub sample_rate: SampleRate,
     pub channels: Vec<Channel>,
     pub timeline: Timeline,
     pub recording: Option<Recording>,
@@ -42,7 +41,7 @@ impl Project {
     /// the new capture doesn't collide with the previous one's files
     /// or timeline.
     pub fn fork_for_new_recording(&self, settings: &Settings) -> Self {
-        Self::with_channels(self.channels.clone(), self.sample_rate, settings)
+        Self::with_channels(self.channels.clone(), self.sample_rate(), settings)
     }
 
     fn with_channels(
@@ -58,11 +57,14 @@ impl Project {
             dir,
             bounces_dir,
             bounces_filename_prefix: None,
-            sample_rate,
             channels,
-            timeline: Timeline::new(),
+            timeline: Timeline::new(sample_rate),
             recording: None,
         }
+    }
+
+    pub fn sample_rate(&self) -> SampleRate {
+        self.timeline.sample_rate()
     }
 
     pub fn channel_mut(&mut self, index: u16) -> Option<&mut Channel> {
@@ -89,27 +91,9 @@ impl Project {
         self.timeline.mark(end_rel_sample);
     }
 
-    pub fn secs_at(&self, sample: u64) -> u64 {
-        sample / (self.sample_rate.0 as u64).max(1)
-    }
-
-    pub fn duration_secs(&self, start_sample: u64, end_sample: u64) -> u64 {
-        self.secs_at(end_sample.saturating_sub(start_sample))
-    }
-
     /// Wall-clock seconds since the recording started; frozen at stop.
     /// Zero when no recording exists yet.
     pub fn elapsed_secs(&self) -> u64 {
         self.recording.as_ref().map(|r| r.elapsed_secs()).unwrap_or(0)
-    }
-
-    pub fn since_last_marker_secs(&self, current_rel_sample: u64) -> u64 {
-        let last = self
-            .timeline
-            .markers()
-            .last()
-            .map(|m| m.sample)
-            .unwrap_or(0);
-        self.secs_at(current_rel_sample.saturating_sub(last))
     }
 }

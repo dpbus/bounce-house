@@ -223,7 +223,7 @@ impl App {
             .expect("recording exists while capturing");
         let job = take.map(|take| BounceJob {
             take,
-            sample_rate: self.project.sample_rate,
+            sample_rate: self.project.sample_rate(),
             bounces_dir: self.project.bounces_dir.clone(),
             filename_prefix: self.project.bounces_filename_prefix.clone(),
             channel_files: recording.channel_files.clone(),
