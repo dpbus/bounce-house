@@ -24,9 +24,6 @@ const CHANNELS_DIR: &str = "channels";
 /// from. Direct field access from outside the module is read-only.
 pub struct Session {
     pub name: String,
-    /// Session root on disk (settings.sessions_dir / name). Created
-    /// lazily when recording first starts.
-    pub dir: PathBuf,
     /// Where this session's bounces (MP3s) go. Either a per-session
     /// subdirectory of settings.bounces_dir (when prefix is None), or
     /// the settings.bounces_dir itself with `bounces_filename_prefix`
@@ -34,6 +31,9 @@ pub struct Session {
     pub bounces_dir: PathBuf,
     pub bounces_filename_prefix: Option<String>,
     pub recording: Option<Recording>,
+    /// Session root on disk (settings.sessions_dir / name). Created
+    /// lazily when recording first starts.
+    dir: PathBuf,
     channels: Vec<Channel>,
     timeline: Timeline,
 }
@@ -82,6 +82,15 @@ impl Session {
 
     pub fn armed_channels(&self) -> impl Iterator<Item = &Channel> + '_ {
         self.channels.iter().filter(|c| c.armed)
+    }
+
+    /// Absolute paths to the recording's channel WAV files, in order.
+    /// Empty if no recording exists.
+    pub fn recording_channel_paths(&self) -> Vec<PathBuf> {
+        self.recording
+            .as_ref()
+            .map(|r| r.channel_files.iter().map(|p| self.dir.join(p)).collect())
+            .unwrap_or_default()
     }
 
     /// Absolute on-disk path for a channel's WAV file.

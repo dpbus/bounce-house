@@ -214,22 +214,12 @@ impl App {
         let Some(take) = self.session.create_take(trimmed) else {
             return;
         };
-        let recording = self
-            .session
-            .recording
-            .as_ref()
-            .expect("recording exists while capturing");
-        let channel_files = recording
-            .channel_files
-            .iter()
-            .map(|rel| self.session.dir.join(rel))
-            .collect();
         let job = BounceJob {
             take,
             sample_rate: self.session.sample_rate(),
             bounces_dir: self.session.bounces_dir.clone(),
             filename_prefix: self.session.bounces_filename_prefix.clone(),
-            channel_files,
+            channel_files: self.session.recording_channel_paths(),
             flushed_samples: Some(capture.flushed_samples()),
         };
         self.bounce_pool.dispatch(job);
