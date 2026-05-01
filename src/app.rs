@@ -39,6 +39,13 @@ pub struct App {
     tick_peaks: Vec<f32>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecordingState {
+    Idle,
+    Recording,
+    Paused,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct LevelSample {
     /// Absolute engine sample at the moment the entry was captured.
@@ -85,6 +92,25 @@ impl App {
 
     pub fn is_recording(&self) -> bool {
         self.capture.is_some()
+    }
+
+    pub fn recording_state(&self) -> RecordingState {
+        match &self.capture {
+            Some(c) if c.is_paused() => RecordingState::Paused,
+            Some(_) => RecordingState::Recording,
+            None => RecordingState::Idle,
+        }
+    }
+
+    pub fn toggle_pause(&mut self) {
+        let Some(capture) = &mut self.capture else {
+            return;
+        };
+        if capture.is_paused() {
+            capture.resume(&self.engine);
+        } else {
+            capture.pause(&self.engine);
+        }
     }
 
     pub fn rel_sample_position(&self) -> Option<u64> {

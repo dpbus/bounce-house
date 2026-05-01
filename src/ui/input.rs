@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::App;
+use crate::app::{App, RecordingState};
 use crate::ui::modals::{
     ActiveModal, ChannelPickerModal, HelpModal, LoadTemplateModal, SaveTemplateModal, SettingsModal,
 };
@@ -32,6 +32,7 @@ enum KeyAction {
     MarkAndOpenTakeNaming,
     OpenRetroactiveTakeNaming,
     DeleteLastMarker,
+    TogglePause,
     OpenSaveTemplate,
     OpenLoadTemplate,
     OpenSettings,
@@ -39,34 +40,48 @@ enum KeyAction {
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
-    decide_with_state(app.is_recording(), key)
+    decide_with_state(app.recording_state(), key)
 }
 
-fn decide_with_state(is_recording: bool, key: KeyEvent) -> KeyAction {
+fn decide_with_state(state: RecordingState, key: KeyEvent) -> KeyAction {
     use KeyCode::*;
-    if is_recording {
-        return match key.code {
+    match state {
+        RecordingState::Recording => match key.code {
             Esc | Char('r') | Char('R') => KeyAction::OpenConfirmStop,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
             Char(' ') => KeyAction::DropMarker,
             Char('t') | Char('T') => KeyAction::MarkAndOpenTakeNaming,
             Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
+            Char('p') | Char('P') => KeyAction::TogglePause,
             Backspace => KeyAction::DeleteLastMarker,
             Char('?') => KeyAction::OpenHelp,
             _ => KeyAction::None,
-        };
-    }
-    match key.code {
-        Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenSaveTemplate,
-        Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::OpenLoadTemplate,
-        Char(',') => KeyAction::OpenSettings,
-        Char('q') | Char('Q') | Esc => KeyAction::OpenConfirmQuit,
-        Char('r') | Char('R') => KeyAction::StartRecording,
-        Char('c') | Char('C') => KeyAction::OpenChannelPicker,
-        Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
-        Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
-        Char('?') => KeyAction::OpenHelp,
-        _ => KeyAction::None,
+        },
+        RecordingState::Paused => match key.code {
+            Esc | Char('r') | Char('R') => KeyAction::OpenConfirmStop,
+            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
+            Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
+            Char('p') | Char('P') => KeyAction::TogglePause,
+            Backspace => KeyAction::DeleteLastMarker,
+            Char('?') => KeyAction::OpenHelp,
+            _ => KeyAction::None,
+        },
+        RecordingState::Idle => match key.code {
+            Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                KeyAction::OpenSaveTemplate
+            }
+            Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                KeyAction::OpenLoadTemplate
+            }
+            Char(',') => KeyAction::OpenSettings,
+            Char('q') | Char('Q') | Esc => KeyAction::OpenConfirmQuit,
+            Char('r') | Char('R') => KeyAction::StartRecording,
+            Char('c') | Char('C') => KeyAction::OpenChannelPicker,
+            Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
+            Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
+            Char('?') => KeyAction::OpenHelp,
+            _ => KeyAction::None,
+        },
     }
 }
 
@@ -90,6 +105,7 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
             }
         }
         KeyAction::DeleteLastMarker => app.delete_last_marker(),
+        KeyAction::TogglePause => app.toggle_pause(),
         KeyAction::OpenChannelPicker => {
             view.open_modal(ActiveModal::ChannelPicker(ChannelPickerModal::new()));
         }
@@ -125,11 +141,11 @@ mod tests {
     #[test]
     fn idle_r_starts_recording() {
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char('r'))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('r'))),
             KeyAction::StartRecording
         );
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char('R'))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('R'))),
             KeyAction::StartRecording
         );
     }
@@ -138,7 +154,7 @@ mod tests {
     fn idle_q_or_esc_opens_quit_confirm() {
         for code in [KeyCode::Char('q'), KeyCode::Char('Q'), KeyCode::Esc] {
             assert_eq!(
-                decide_with_state(false, key(code)),
+                decide_with_state(RecordingState::Idle, key(code)),
                 KeyAction::OpenConfirmQuit,
                 "unexpected for {code:?}"
             );
@@ -148,7 +164,7 @@ mod tests {
     #[test]
     fn idle_c_opens_channel_picker() {
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char('c'))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('c'))),
             KeyAction::OpenChannelPicker
         );
     }
@@ -156,7 +172,7 @@ mod tests {
     #[test]
     fn idle_n_opens_retroactive_take_naming() {
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char('n'))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('n'))),
             KeyAction::OpenRetroactiveTakeNaming
         );
     }
@@ -164,12 +180,12 @@ mod tests {
     #[test]
     fn idle_ctrl_s_opens_save_template() {
         assert_eq!(
-            decide_with_state(false, ctrl(KeyCode::Char('s'))),
+            decide_with_state(RecordingState::Idle, ctrl(KeyCode::Char('s'))),
             KeyAction::OpenSaveTemplate
         );
         // Bare 's' should not.
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char('s'))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('s'))),
             KeyAction::None
         );
     }
@@ -177,7 +193,7 @@ mod tests {
     #[test]
     fn idle_ctrl_l_opens_load_template() {
         assert_eq!(
-            decide_with_state(false, ctrl(KeyCode::Char('l'))),
+            decide_with_state(RecordingState::Idle, ctrl(KeyCode::Char('l'))),
             KeyAction::OpenLoadTemplate
         );
     }
@@ -185,7 +201,7 @@ mod tests {
     #[test]
     fn idle_comma_opens_settings() {
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char(','))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char(','))),
             KeyAction::OpenSettings
         );
     }
@@ -193,7 +209,7 @@ mod tests {
     #[test]
     fn idle_question_opens_help() {
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char('?'))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('?'))),
             KeyAction::OpenHelp
         );
     }
@@ -201,8 +217,17 @@ mod tests {
     #[test]
     fn idle_w_cycles_waveform_window() {
         assert_eq!(
-            decide_with_state(false, key(KeyCode::Char('w'))),
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('w'))),
             KeyAction::CycleWaveformWindow
+        );
+    }
+
+    #[test]
+    fn idle_p_does_nothing() {
+        // Pause only meaningful while recording.
+        assert_eq!(
+            decide_with_state(RecordingState::Idle, key(KeyCode::Char('p'))),
+            KeyAction::None
         );
     }
 
@@ -210,7 +235,7 @@ mod tests {
     fn idle_unmapped_keys_yield_none() {
         for code in [KeyCode::Char('x'), KeyCode::Tab, KeyCode::F(1), KeyCode::Up] {
             assert_eq!(
-                decide_with_state(false, key(code)),
+                decide_with_state(RecordingState::Idle, key(code)),
                 KeyAction::None,
                 "unexpected for {code:?}"
             );
@@ -221,7 +246,7 @@ mod tests {
     fn recording_r_or_esc_opens_stop_confirm() {
         for code in [KeyCode::Char('r'), KeyCode::Char('R'), KeyCode::Esc] {
             assert_eq!(
-                decide_with_state(true, key(code)),
+                decide_with_state(RecordingState::Recording, key(code)),
                 KeyAction::OpenConfirmStop,
                 "unexpected for {code:?}"
             );
@@ -231,7 +256,7 @@ mod tests {
     #[test]
     fn recording_space_drops_marker() {
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Char(' '))),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char(' '))),
             KeyAction::DropMarker
         );
     }
@@ -239,7 +264,7 @@ mod tests {
     #[test]
     fn recording_t_marks_and_names_take() {
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Char('t'))),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char('t'))),
             KeyAction::MarkAndOpenTakeNaming
         );
     }
@@ -247,15 +272,23 @@ mod tests {
     #[test]
     fn recording_n_opens_retroactive_naming() {
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Char('n'))),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char('n'))),
             KeyAction::OpenRetroactiveTakeNaming
+        );
+    }
+
+    #[test]
+    fn recording_p_toggles_pause() {
+        assert_eq!(
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char('p'))),
+            KeyAction::TogglePause
         );
     }
 
     #[test]
     fn recording_backspace_deletes_last_marker() {
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Backspace)),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Backspace)),
             KeyAction::DeleteLastMarker
         );
     }
@@ -264,7 +297,7 @@ mod tests {
     fn recording_q_does_nothing() {
         // While recording, q is intentionally not bound — user must stop first.
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Char('q'))),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char('q'))),
             KeyAction::None
         );
     }
@@ -273,15 +306,15 @@ mod tests {
     fn recording_settings_and_templates_unbound() {
         // No mid-recording template/settings access.
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Char(','))),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char(','))),
             KeyAction::None
         );
         assert_eq!(
-            decide_with_state(true, ctrl(KeyCode::Char('s'))),
+            decide_with_state(RecordingState::Recording, ctrl(KeyCode::Char('s'))),
             KeyAction::None
         );
         assert_eq!(
-            decide_with_state(true, ctrl(KeyCode::Char('l'))),
+            decide_with_state(RecordingState::Recording, ctrl(KeyCode::Char('l'))),
             KeyAction::None
         );
     }
@@ -289,7 +322,7 @@ mod tests {
     #[test]
     fn recording_w_still_cycles_waveform() {
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Char('w'))),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char('w'))),
             KeyAction::CycleWaveformWindow
         );
     }
@@ -297,8 +330,70 @@ mod tests {
     #[test]
     fn recording_question_still_opens_help() {
         assert_eq!(
-            decide_with_state(true, key(KeyCode::Char('?'))),
+            decide_with_state(RecordingState::Recording, key(KeyCode::Char('?'))),
             KeyAction::OpenHelp
+        );
+    }
+
+    #[test]
+    fn paused_p_toggles_pause() {
+        assert_eq!(
+            decide_with_state(RecordingState::Paused, key(KeyCode::Char('p'))),
+            KeyAction::TogglePause
+        );
+    }
+
+    #[test]
+    fn paused_space_does_nothing() {
+        // Can't drop a marker on a frozen timeline.
+        assert_eq!(
+            decide_with_state(RecordingState::Paused, key(KeyCode::Char(' '))),
+            KeyAction::None
+        );
+    }
+
+    #[test]
+    fn paused_t_does_nothing() {
+        // T drops a marker, same disable rationale as Space.
+        assert_eq!(
+            decide_with_state(RecordingState::Paused, key(KeyCode::Char('t'))),
+            KeyAction::None
+        );
+    }
+
+    #[test]
+    fn paused_n_still_opens_retroactive_naming() {
+        // Naming an existing take is fine while paused.
+        assert_eq!(
+            decide_with_state(RecordingState::Paused, key(KeyCode::Char('n'))),
+            KeyAction::OpenRetroactiveTakeNaming
+        );
+    }
+
+    #[test]
+    fn paused_r_or_esc_still_opens_stop_confirm() {
+        for code in [KeyCode::Char('r'), KeyCode::Char('R'), KeyCode::Esc] {
+            assert_eq!(
+                decide_with_state(RecordingState::Paused, key(code)),
+                KeyAction::OpenConfirmStop,
+                "unexpected for {code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn paused_backspace_still_deletes_last_marker() {
+        assert_eq!(
+            decide_with_state(RecordingState::Paused, key(KeyCode::Backspace)),
+            KeyAction::DeleteLastMarker
+        );
+    }
+
+    #[test]
+    fn paused_w_still_cycles_waveform() {
+        assert_eq!(
+            decide_with_state(RecordingState::Paused, key(KeyCode::Char('w'))),
+            KeyAction::CycleWaveformWindow
         );
     }
 }

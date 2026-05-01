@@ -64,7 +64,6 @@ impl Capture {
         // self drops here, joining the writer thread
     }
 
-    #[allow(dead_code)]
     pub fn pause(&mut self, engine: &EngineHandle) -> bool {
         if self.is_paused() {
             return false;
@@ -74,7 +73,6 @@ impl Capture {
         true
     }
 
-    #[allow(dead_code)]
     pub fn resume(&mut self, engine: &EngineHandle) -> bool {
         let Some(started) = self.pause_start_sample.take() else {
             return false;
@@ -85,7 +83,6 @@ impl Capture {
         true
     }
 
-    #[allow(dead_code)]
     pub fn is_paused(&self) -> bool {
         self.pause_start_sample.is_some()
     }
