@@ -25,6 +25,8 @@ pub struct EngineHandle {
 enum Command {
     AttachConsumer { producer: rtrb::Producer<f32> },
     DetachConsumer { ack_tx: Sender<()> },
+    Pause,
+    Resume,
 }
 
 /// Audio-thread state. Lives in the cpal callback closure; owns working
@@ -35,6 +37,7 @@ struct Engine {
     peaks_buf: Vec<f32>,
     raw_producer: Option<rtrb::Producer<f32>>,
     levels_producer: rtrb::Producer<LevelObservation>,
+    paused: bool,
 }
 
 impl EngineHandle {
@@ -55,6 +58,7 @@ impl EngineHandle {
             peaks_buf: vec![0.0; total_channel_count],
             raw_producer: None,
             levels_producer,
+            paused: false,
         };
 
         let stream = device.build_input_stream(move |data: &[f32]| {
@@ -114,6 +118,14 @@ impl EngineHandle {
             .expect("audio thread dropped");
         let _ = ack_rx.recv();
     }
+
+    pub fn pause(&self) {
+        let _ = self.cmd_tx.send(Command::Pause);
+    }
+
+    pub fn resume(&self) {
+        let _ = self.cmd_tx.send(Command::Resume);
+    }
 }
 
 impl Engine {
@@ -126,6 +138,12 @@ impl Engine {
                 Command::DetachConsumer { ack_tx } => {
                     self.raw_producer = None;
                     let _ = ack_tx.send(());
+                }
+                Command::Pause => {
+                    self.paused = true;
+                }
+                Command::Resume => {
+                    self.paused = false;
                 }
             }
         }
@@ -175,11 +193,15 @@ impl Engine {
             peaks_buf: vec![0.0; channel_count],
             raw_producer: None,
             levels_producer,
+            paused: false,
         };
         (engine, levels_consumer)
     }
 
     fn push_raw_if_attached(&mut self, data: &[f32]) {
+        if self.paused {
+            return;
+        }
         let Some(producer) = &mut self.raw_producer else {
             return;
         };
@@ -253,6 +275,43 @@ mod tests {
         // callback_start_sample for the second buffer.
         assert_eq!(engine.advance_sample_position(64), 64);
         assert_eq!(engine.sample_position.load(Ordering::Relaxed), 128);
+    }
+
+    #[test]
+    fn paused_engine_drops_raw_samples() {
+        let (mut engine, _) = Engine::for_test(2);
+        let (producer, mut consumer) = rtrb::RingBuffer::<f32>::new(64);
+        engine.raw_producer = Some(producer);
+        engine.paused = true;
+
+        engine.push_raw_if_attached(&[0.1, 0.2, 0.3, 0.4]);
+
+        assert!(consumer.pop().is_err());
+    }
+
+    #[test]
+    fn unpaused_engine_forwards_raw_samples() {
+        let (mut engine, _) = Engine::for_test(2);
+        let (producer, consumer) = rtrb::RingBuffer::<f32>::new(64);
+        engine.raw_producer = Some(producer);
+
+        engine.push_raw_if_attached(&[0.1, 0.2, 0.3, 0.4]);
+
+        assert_eq!(consumer.slots(), 4);
+    }
+
+    #[test]
+    fn pause_resume_commands_flip_paused_flag() {
+        let (mut engine, _) = Engine::for_test(2);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
+
+        cmd_tx.send(Command::Pause).unwrap();
+        engine.drain_commands(&cmd_rx);
+        assert!(engine.paused);
+
+        cmd_tx.send(Command::Resume).unwrap();
+        engine.drain_commands(&cmd_rx);
+        assert!(!engine.paused);
     }
 
     #[test]
