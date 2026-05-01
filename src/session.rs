@@ -124,6 +124,12 @@ impl Session {
         }
     }
 
+    pub fn toggle_channel_hidden(&mut self, index: u16) {
+        if let Some(channel) = self.channels.get_mut(index as usize) {
+            channel.hidden = !channel.hidden;
+        }
+    }
+
     pub fn drop_marker(&mut self, sample: u64) {
         self.timeline.mark(sample);
     }
@@ -419,6 +425,7 @@ mod tests {
             index,
             label: label.map(String::from),
             armed: true,
+            hidden: false,
         }
     }
 

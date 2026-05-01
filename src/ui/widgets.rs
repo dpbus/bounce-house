@@ -67,7 +67,12 @@ const SILENCE_DB: f32 = -80.0;
 /// gets this bg so the bar renders as bands inside a continuous track.
 const METER_TRACK_BG: Color = Color::Rgb(40, 40, 40);
 
-pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec<Span<'static>> {
+pub fn horizontal_meter(
+    level: f32,
+    peak_hold: Option<f32>,
+    width: usize,
+    dim: bool,
+) -> Vec<Span<'static>> {
     const PARTIAL_GLYPHS: [&str; 7] = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 
     let (full_cells, partial) = db_to_fill(to_db(level), width);
@@ -78,28 +83,27 @@ pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec
     let green = full_cells.min(warn_cells);
     let yellow = full_cells.min(clip_cells).saturating_sub(green);
     let red = full_cells.saturating_sub(green + yellow);
-    if green > 0 {
-        spans.push(Span::styled(
-            "█".repeat(green),
-            Style::default().fg(BAND_GREEN).bg(METER_TRACK_BG),
-        ));
-    }
-    if yellow > 0 {
-        spans.push(Span::styled(
-            "█".repeat(yellow),
-            Style::default().fg(BAND_YELLOW).bg(METER_TRACK_BG),
-        ));
-    }
-    if red > 0 {
-        spans.push(Span::styled(
-            "█".repeat(red),
-            Style::default().fg(BAND_RED).bg(METER_TRACK_BG),
-        ));
+    let bands = if dim {
+        [
+            (green, BAND_GREEN_DIM),
+            (yellow, BAND_YELLOW_DIM),
+            (red, BAND_RED_DIM),
+        ]
+    } else {
+        [(green, BAND_GREEN), (yellow, BAND_YELLOW), (red, BAND_RED)]
+    };
+    for (count, color) in bands {
+        if count > 0 {
+            spans.push(Span::styled(
+                "█".repeat(count),
+                Style::default().fg(color).bg(METER_TRACK_BG),
+            ));
+        }
     }
 
     let mut cells_used = full_cells;
     if partial > 0 {
-        let color = position_color(full_cells, warn_cells, clip_cells, false);
+        let color = position_color(full_cells, warn_cells, clip_cells, dim);
         spans.push(Span::styled(
             PARTIAL_GLYPHS[partial - 1],
             Style::default().fg(color).bg(METER_TRACK_BG),
@@ -111,6 +115,7 @@ pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec
         .map(|p| db_to_position(to_db(p), width))
         .filter(|&pos| pos > cells_used && pos <= width);
 
+    let peak_color = if dim { Color::DarkGray } else { Color::White };
     match peak_pos {
         Some(pos) => {
             let space_before = pos - cells_used - 1;
@@ -121,7 +126,7 @@ pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec
             ));
             spans.push(Span::styled(
                 "▌",
-                Style::default().fg(Color::White).bg(METER_TRACK_BG),
+                Style::default().fg(peak_color).bg(METER_TRACK_BG),
             ));
             spans.push(Span::styled(
                 " ".repeat(space_after),

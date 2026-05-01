@@ -298,4 +298,8 @@ impl App {
     pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
         self.session.set_channel_label(channel_index, label);
     }
+
+    pub fn toggle_hidden(&mut self, channel_index: u16) {
+        self.session.toggle_channel_hidden(channel_index);
+    }
 }

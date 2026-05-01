@@ -8,7 +8,12 @@ use crate::ui::widgets::vertical_meter;
 const STRIP_WIDTH: u16 = 14;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let channels = app.session.channels();
+    let channels: Vec<&Channel> = app
+        .session
+        .channels()
+        .iter()
+        .filter(|c| !c.hidden)
+        .collect();
     let armed_count = channels.iter().filter(|c| c.armed).count();
     let total = app.engine.channel_count();
     let title = format!(" Channels — {}/{} armed ", armed_count, total);

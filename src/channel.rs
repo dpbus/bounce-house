@@ -7,6 +7,8 @@ pub struct Channel {
     pub label: Option<String>,
     #[serde(default)]
     pub armed: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
 }
 
 impl Channel {
@@ -15,6 +17,7 @@ impl Channel {
             index,
             label: None,
             armed: false,
+            hidden: false,
         }
     }
 }

@@ -68,6 +68,12 @@ impl ChannelPickerModal {
                 }
                 Action::Stay
             }
+            KeyCode::Char('h') | KeyCode::Char('H') => {
+                if let Some(index) = self.focused_channel_index(app) {
+                    app.toggle_hidden(index);
+                }
+                Action::Stay
+            }
             KeyCode::Tab => {
                 self.renaming = Some(TextInput::with_value(&self.focused_label(app)));
                 Action::Stay
@@ -218,26 +224,41 @@ fn channel_row(
     focused: bool,
     renaming_input: Option<&TextInput>,
 ) -> Line<'static> {
-    let row_style = if focused {
+    let mut row_style = if focused {
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
-    let marker_style = if channel.armed {
+    let mut marker_style = if channel.armed {
         Style::default().fg(Color::Red)
     } else {
         Style::default().fg(Color::DarkGray)
     };
+    if channel.hidden {
+        row_style = row_style.add_modifier(Modifier::DIM);
+        marker_style = marker_style.add_modifier(Modifier::DIM);
+    }
 
-    let armed_marker = if channel.armed { "[●]" } else { "[ ]" };
+    // Brackets denote visibility: square for visible, parens for hidden.
+    let armed_marker = match (channel.hidden, channel.armed) {
+        (false, true) => "[●]",
+        (false, false) => "[ ]",
+        (true, true) => "(●)",
+        (true, false) => "( )",
+    };
 
     let mut spans = vec![
         Span::styled(armed_marker.to_string(), marker_style),
         Span::styled(format!(" Ch{:>3} ", channel.index), row_style),
     ];
-    spans.extend(horizontal_meter(level, Some(peak), METER_WIDTH));
+    spans.extend(horizontal_meter(
+        level,
+        Some(peak),
+        METER_WIDTH,
+        channel.hidden,
+    ));
     spans.push(Span::raw(" "));
     spans.push(Span::styled(db_label(level), row_style));
     spans.push(Span::raw("  "));
@@ -276,6 +297,7 @@ fn footer_line(renaming: bool) -> Line<'static> {
         spans.extend(key_hint("Esc", "cancel", Color::Cyan));
     } else {
         spans.extend(key_hint("Space", "arm  ", Color::Cyan));
+        spans.extend(key_hint("H", "hide  ", Color::Cyan));
         spans.extend(key_hint("Tab", "rename  ", Color::Cyan));
         spans.extend(key_hint("Esc", "close", Color::Cyan));
     }
