@@ -30,9 +30,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let constraints: Vec<Constraint> = std::iter::repeat_n(Constraint::Max(STRIP_WIDTH), channels.len())
-        .chain(std::iter::once(Constraint::Fill(1)))
-        .collect();
+    let constraints: Vec<Constraint> =
+        std::iter::repeat_n(Constraint::Max(STRIP_WIDTH), channels.len())
+            .chain(std::iter::once(Constraint::Fill(1)))
+            .collect();
     let strips = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(constraints)
