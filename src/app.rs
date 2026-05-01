@@ -285,6 +285,8 @@ impl App {
                 .set_channel_label(tmpl_channel.index, tmpl_channel.label.clone());
             self.session
                 .set_channel_armed(tmpl_channel.index, tmpl_channel.armed);
+            self.session
+                .set_channel_hidden(tmpl_channel.index, tmpl_channel.hidden);
         }
     }
 

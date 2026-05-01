@@ -10,7 +10,8 @@ use crate::ui::Action;
 use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
 use crate::ui::widgets::{
-    MODAL_BORDER_OVERHEAD, horizontal_meter, input_with_cursor, key_hint, truncate_with_ellipsis,
+    MODAL_BORDER_OVERHEAD, channel_marker, channel_marker_style, horizontal_meter,
+    input_with_cursor, key_hint, truncate_with_ellipsis,
 };
 
 const METER_WIDTH: usize = 18;
@@ -231,26 +232,12 @@ fn channel_row(
     } else {
         Style::default()
     };
-    let mut marker_style = if channel.armed {
-        Style::default().fg(Color::Red)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
     if channel.hidden {
         row_style = row_style.add_modifier(Modifier::DIM);
-        marker_style = marker_style.add_modifier(Modifier::DIM);
     }
 
-    // Brackets denote visibility: square for visible, parens for hidden.
-    let armed_marker = match (channel.hidden, channel.armed) {
-        (false, true) => "[●]",
-        (false, false) => "[ ]",
-        (true, true) => "(●)",
-        (true, false) => "( )",
-    };
-
     let mut spans = vec![
-        Span::styled(armed_marker.to_string(), marker_style),
+        Span::styled(channel_marker(channel), channel_marker_style(channel)),
         Span::styled(format!(" Ch{:>3} ", channel.index), row_style),
     ];
     spans.extend(horizontal_meter(

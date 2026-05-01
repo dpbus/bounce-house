@@ -130,6 +130,12 @@ impl Session {
         }
     }
 
+    pub fn set_channel_hidden(&mut self, index: u16, hidden: bool) {
+        if let Some(channel) = self.channels.get_mut(index as usize) {
+            channel.hidden = hidden;
+        }
+    }
+
     pub fn drop_marker(&mut self, sample: u64) {
         self.timeline.mark(sample);
     }

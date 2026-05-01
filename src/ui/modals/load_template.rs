@@ -7,7 +7,8 @@ use crate::template::Template;
 use crate::ui::Action;
 use crate::ui::view::View;
 use crate::ui::widgets::{
-    channel_preview_row, dim_status, flow_columns, key_hint, labeled, modal, truncate_with_ellipsis,
+    channel_preview_row, channels_summary, dim_status, flow_columns, key_hint, labeled, modal,
+    truncate_with_ellipsis,
 };
 
 const LIST_WIDTH: u16 = 20;
@@ -125,11 +126,12 @@ fn draw_preview(frame: &mut Frame, area: Rect, template: &Template) {
         .split(area);
 
     let armed = template.channels.iter().filter(|c| c.armed).count();
+    let hidden = template.channels.iter().filter(|c| c.hidden).count();
     let total = template.channels.len();
     let header = vec![
         labeled("Name:      ", template.name.clone()),
         labeled("Device:    ", template.device_name.clone()),
-        labeled("Channels:  ", format!("{} armed / {}", armed, total)),
+        labeled("Channels:  ", channels_summary(armed, hidden, total)),
     ];
     frame.render_widget(Paragraph::new(header), chunks[0]);
 

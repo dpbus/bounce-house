@@ -8,7 +8,8 @@ use crate::ui::Action;
 use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
 use crate::ui::widgets::{
-    channel_preview_row, flow_columns, input_with_cursor, key_hint, labeled, modal,
+    channel_preview_row, channels_summary, flow_columns, input_with_cursor, key_hint, labeled,
+    modal,
 };
 
 const COL_WIDTH: u16 = 20;
@@ -113,11 +114,12 @@ fn pick_layout(n_channels: u16) -> ContentLayout {
 }
 
 fn header_lines(app: &App) -> Vec<Line<'static>> {
-    let total = app.engine.channel_count();
+    let total = app.engine.channel_count() as usize;
     let armed = app.session.armed_channels().count();
+    let hidden = app.session.channels().iter().filter(|c| c.hidden).count();
     vec![
         labeled("Device:    ", app.engine.device_name().to_string()),
-        labeled("Channels:  ", format!("{} armed / {}", armed, total)),
+        labeled("Channels:  ", channels_summary(armed, hidden, total)),
     ]
 }
 
