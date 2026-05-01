@@ -220,9 +220,6 @@ impl App {
         if trimmed.is_empty() {
             return;
         }
-        let Some(capture) = &self.capture else {
-            return;
-        };
         let Some(take) = self.session.create_take(trimmed) else {
             return;
         };
@@ -232,7 +229,7 @@ impl App {
             bounces_dir: self.session.bounces_dir.clone(),
             filename_prefix: self.session.bounces_filename_prefix.clone(),
             channel_files: self.session.recording_channel_paths(),
-            flushed_samples: Some(capture.flushed_samples()),
+            flushed_samples: self.capture.as_ref().map(|c| c.flushed_samples()),
         };
         self.bounce_pool.dispatch(job);
     }
