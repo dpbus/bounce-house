@@ -173,28 +173,18 @@ impl Session {
             return None;
         }
         self.recording = Some(Recording {
-            started_at: Local::now(),
-            stopped_at: None,
             channels: channels.clone(),
+            end_sample: None,
         });
         self.timeline.mark(0);
         Some(channels)
     }
 
-    pub fn stop_recording(&mut self, end_rel_sample: u64) {
+    pub fn stop_recording(&mut self, end_sample: u64) {
         if let Some(rec) = &mut self.recording {
-            rec.stopped_at = Some(Local::now());
+            rec.end_sample = Some(end_sample);
         }
-        self.timeline.mark(end_rel_sample);
-    }
-
-    /// Wall-clock seconds since the recording started; frozen at stop.
-    /// Zero when no recording exists yet.
-    pub fn elapsed_secs(&self) -> u64 {
-        self.recording
-            .as_ref()
-            .map(|r| r.elapsed_secs())
-            .unwrap_or(0)
+        self.timeline.mark(end_sample);
     }
 }
 
@@ -321,7 +311,7 @@ mod tests {
 
         let rec = session.recording.as_ref().expect("recording set");
         assert_eq!(rec.channels.len(), 1);
-        assert!(rec.stopped_at.is_none());
+        assert!(rec.end_sample.is_none());
 
         let markers: Vec<u64> = session
             .timeline
@@ -342,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_recording_stamps_stopped_at_and_drops_end_mark() {
+    fn stop_recording_stamps_end_sample_and_drops_end_mark() {
         let dir = tempdir().unwrap();
         let mut session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
         session.set_channel_armed(0, true);
@@ -351,7 +341,7 @@ mod tests {
         session.stop_recording(96_000);
 
         let rec = session.recording.as_ref().expect("recording set");
-        assert!(rec.stopped_at.is_some());
+        assert_eq!(rec.end_sample, Some(96_000));
 
         let markers: Vec<u64> = session
             .timeline
@@ -376,13 +366,6 @@ mod tests {
             .map(|m| m.sample)
             .collect();
         assert_eq!(markers, vec![48_000]);
-    }
-
-    #[test]
-    fn elapsed_secs_zero_when_no_recording() {
-        let dir = tempdir().unwrap();
-        let session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
-        assert_eq!(session.elapsed_secs(), 0);
     }
 
     #[test]

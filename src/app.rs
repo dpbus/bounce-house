@@ -95,6 +95,17 @@ impl App {
         self.capture.as_ref().map(|c| c.absolute(rel))
     }
 
+    pub fn recording_duration_secs(&self) -> Option<u64> {
+        let recording = self.session.recording.as_ref()?;
+        let sr = (self.session.sample_rate().0 as u64).max(1);
+        let samples = self
+            .capture
+            .as_ref()
+            .map(|c| c.rel_sample_position())
+            .or(recording.end_sample)?;
+        Some(samples / sr)
+    }
+
     pub fn tick_display(&mut self) {
         self.total_ticks += 1;
         self.apply_bounce_events();
