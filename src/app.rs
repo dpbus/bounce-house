@@ -128,6 +128,7 @@ impl App {
             self.tick_peaks.resize(n_channels, 0.0);
         }
         self.tick_peaks[..n_channels].fill(0.0);
+        let recorded = self.capture.as_ref().is_some_and(|c| !c.is_paused());
         while let Ok(obs) = self.levels_consumer.pop() {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
@@ -139,7 +140,7 @@ impl App {
             self.level_history.push_back(LevelSample {
                 sample: obs.sample,
                 peak: combined,
-                recorded: obs.recorded,
+                recorded,
             });
         }
         for i in 0..n_channels {

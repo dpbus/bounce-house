@@ -177,7 +177,6 @@ impl Engine {
         channel_peaks[..self.total_channel_count].copy_from_slice(&self.peaks_buf);
         let _ = self.levels_producer.push(LevelObservation {
             sample: callback_start_sample,
-            recorded: self.raw_producer.is_some(),
             channel_peaks,
         });
     }
@@ -315,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn publish_observation_pushes_with_peaks_and_recorded_flag() {
+    fn publish_observation_pushes_sample_and_peaks() {
         let (mut engine, mut consumer) = Engine::for_test(2);
         engine.peaks_buf[0] = 0.3;
         engine.peaks_buf[1] = 0.7;
@@ -323,7 +322,6 @@ mod tests {
 
         let obs = consumer.pop().expect("observation should be pushed");
         assert_eq!(obs.sample, 48_000);
-        assert!(!obs.recorded, "no producer attached → not recorded");
         assert_eq!(obs.channel_peaks[0], 0.3);
         assert_eq!(obs.channel_peaks[1], 0.7);
         // Channels past total_channel_count remain at default zero.
