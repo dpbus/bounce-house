@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding};
 
-use crate::app::App;
+use crate::app::{App, RecordingState};
 use crate::ui::Action;
 use crate::ui::footer;
 use crate::ui::header;
@@ -219,13 +219,16 @@ fn dim_buffer(frame: &mut Frame) {
 }
 
 fn outer_block(app: &App) -> Block<'static> {
-    let (title, color) = if app.is_recording() {
-        (
+    let (title, color) = match app.recording_state() {
+        RecordingState::Recording => (
             format!(" ● Recording — {} ", app.engine.device_name()),
             Color::Red,
-        )
-    } else {
-        (format!(" {} ", app.engine.device_name()), Color::Cyan)
+        ),
+        RecordingState::Paused => (
+            format!(" ⏸ Paused — {} ", app.engine.device_name()),
+            Color::Yellow,
+        ),
+        RecordingState::Idle => (format!(" {} ", app.engine.device_name()), Color::Cyan),
     };
     Block::default()
         .title(title)

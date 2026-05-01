@@ -4,7 +4,7 @@ use std::ops::Range;
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
-use crate::app::App;
+use crate::app::{App, RecordingState};
 use crate::timeline::{BounceStatus, Take, Timeline};
 use crate::ui::view::View;
 use crate::ui::widgets::{
@@ -116,7 +116,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         .rel_sample_position()
         .map(|rel| timeline.since_last_marker_secs(rel))
         .unwrap_or(0);
-    grid[layout.now_row] = now_line(layout.now_sec, since_secs, is_recording);
+    grid[layout.now_row] = now_line(layout.now_sec, since_secs, app.recording_state());
 
     frame.render_widget(Paragraph::new(grid), inner);
 }
@@ -411,14 +411,19 @@ fn view_top_boundary_line(secs: u64) -> Line<'static> {
     ))
 }
 
-fn now_line(now_sec: u64, since_secs: u64, is_recording: bool) -> Line<'static> {
-    let (glyph, clock_style) = if is_recording {
-        (
+fn now_line(now_sec: u64, since_secs: u64, state: RecordingState) -> Line<'static> {
+    let (glyph, clock_style) = match state {
+        RecordingState::Recording => (
             "●",
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-        )
-    } else {
-        ("■", Style::default().fg(Color::DarkGray))
+        ),
+        RecordingState::Paused => (
+            "⏸",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        RecordingState::Idle => ("■", Style::default().fg(Color::DarkGray)),
     };
     let clock_text = format!("{} {}", glyph, mmss(now_sec));
     let since_text = format!("+{}", mmss(since_secs));

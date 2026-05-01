@@ -53,6 +53,7 @@ fn body_lines() -> Vec<Line<'static>> {
     entry(&mut lines, "Space", "drop marker");
     entry(&mut lines, "N", "name last take");
     entry(&mut lines, "Backspace", "unmark last marker");
+    entry(&mut lines, "P", "pause / resume");
     entry(&mut lines, "Esc", "stop");
     blank(&mut lines);
 

@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
-use crate::app::App;
+use crate::app::{App, RecordingState};
 use crate::ui::view::View;
 use crate::ui::widgets::{key_hint, key_hint_when};
 
@@ -32,32 +32,50 @@ fn left(app: &App, view: &View) -> Line<'static> {
         return confirm_overlay_line("Quit?");
     }
     let mut spans = Vec::new();
-    if app.is_recording() {
-        let last_unbound = app.has_unbound_marker();
-        spans.extend(key_hint("T", "take  ", Color::Cyan));
-        spans.extend(key_hint("Space", "mark  ", Color::Cyan));
-        spans.extend(key_hint_when(
-            last_unbound,
-            "Backspace",
-            "unmark  ",
-            Color::Cyan,
-        ));
-        spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
-        spans.extend(key_hint("Esc", "stop", Color::Cyan));
-    } else {
-        spans.extend(key_hint_when(
-            app.session.armed_channels().next().is_some(),
-            "R",
-            "record  ",
-            Color::Cyan,
-        ));
-        spans.extend(key_hint("C", "channels  ", Color::Cyan));
-        spans.extend(key_hint_when(
-            app.has_unbound_marker(),
-            "N",
-            "name take",
-            Color::Cyan,
-        ));
+    match app.recording_state() {
+        RecordingState::Recording => {
+            let last_unbound = app.has_unbound_marker();
+            spans.extend(key_hint("T", "take  ", Color::Cyan));
+            spans.extend(key_hint("Space", "mark  ", Color::Cyan));
+            spans.extend(key_hint_when(
+                last_unbound,
+                "Backspace",
+                "unmark  ",
+                Color::Cyan,
+            ));
+            spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
+            spans.extend(key_hint("P", "pause  ", Color::Cyan));
+            spans.extend(key_hint("Esc", "stop", Color::Cyan));
+        }
+        RecordingState::Paused => {
+            let last_unbound = app.has_unbound_marker();
+            spans.extend(key_hint_when(false, "T", "take  ", Color::Cyan));
+            spans.extend(key_hint_when(false, "Space", "mark  ", Color::Cyan));
+            spans.extend(key_hint_when(
+                last_unbound,
+                "Backspace",
+                "unmark  ",
+                Color::Cyan,
+            ));
+            spans.extend(key_hint_when(last_unbound, "N", "name take  ", Color::Cyan));
+            spans.extend(key_hint("P", "resume  ", Color::Cyan));
+            spans.extend(key_hint("Esc", "stop", Color::Cyan));
+        }
+        RecordingState::Idle => {
+            spans.extend(key_hint_when(
+                app.session.armed_channels().next().is_some(),
+                "R",
+                "record  ",
+                Color::Cyan,
+            ));
+            spans.extend(key_hint("C", "channels  ", Color::Cyan));
+            spans.extend(key_hint_when(
+                app.has_unbound_marker(),
+                "N",
+                "name take",
+                Color::Cyan,
+            ));
+        }
     }
     Line::from(spans)
 }
