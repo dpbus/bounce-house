@@ -37,6 +37,8 @@ enum KeyAction {
     OpenLoadTemplate,
     OpenSettings,
     OpenHelp,
+    ScrollStripsLeft,
+    ScrollStripsRight,
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
@@ -53,6 +55,8 @@ fn decide_with_state(state: RecordingState, key: KeyEvent) -> KeyAction {
             Char('t') | Char('T') => KeyAction::MarkAndOpenTakeNaming,
             Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
             Char('p') | Char('P') => KeyAction::TogglePause,
+            Char('[') => KeyAction::ScrollStripsLeft,
+            Char(']') => KeyAction::ScrollStripsRight,
             Backspace => KeyAction::DeleteLastMarker,
             Char('?') => KeyAction::OpenHelp,
             _ => KeyAction::None,
@@ -62,6 +66,8 @@ fn decide_with_state(state: RecordingState, key: KeyEvent) -> KeyAction {
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
             Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
             Char('p') | Char('P') => KeyAction::TogglePause,
+            Char('[') => KeyAction::ScrollStripsLeft,
+            Char(']') => KeyAction::ScrollStripsRight,
             Backspace => KeyAction::DeleteLastMarker,
             Char('?') => KeyAction::OpenHelp,
             _ => KeyAction::None,
@@ -79,6 +85,8 @@ fn decide_with_state(state: RecordingState, key: KeyEvent) -> KeyAction {
             Char('c') | Char('C') => KeyAction::OpenChannelPicker,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
             Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
+            Char('[') => KeyAction::ScrollStripsLeft,
+            Char(']') => KeyAction::ScrollStripsRight,
             Char('?') => KeyAction::OpenHelp,
             _ => KeyAction::None,
         },
@@ -123,6 +131,8 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
         KeyAction::OpenHelp => {
             view.open_modal(ActiveModal::Help(HelpModal::new()));
         }
+        KeyAction::ScrollStripsLeft => app.scroll_strips_left(1),
+        KeyAction::ScrollStripsRight => app.scroll_strips_right(1),
     }
 }
 

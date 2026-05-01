@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::io;
 
@@ -37,6 +38,13 @@ pub struct App {
     /// drained this tick — fed into the meter decay. Reused as a
     /// scratch buffer so the 60Hz tick path doesn't allocate.
     tick_peaks: Vec<f32>,
+    /// Leftmost visible channel in the strip panel. Bounded by the
+    /// strips panel based on its width — see `last_strip_capacity`.
+    pub channel_viewport_offset: usize,
+    /// How many strips the panel last had room for; written by the
+    /// panel during draw, read by the scroll methods so they can
+    /// clamp the offset to the same useful range the panel will show.
+    pub last_strip_capacity: Cell<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,7 +95,20 @@ impl App {
             waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
             started_at: Local::now(),
             tick_peaks: vec![0.0; n],
+            channel_viewport_offset: 0,
+            last_strip_capacity: Cell::new(0),
         }
+    }
+
+    pub fn scroll_strips_left(&mut self, n: usize) {
+        self.channel_viewport_offset = self.channel_viewport_offset.saturating_sub(n);
+    }
+
+    pub fn scroll_strips_right(&mut self, n: usize) {
+        let visible = self.session.channels().iter().filter(|c| !c.hidden).count();
+        let cap = self.last_strip_capacity.get().max(1);
+        let max = visible.saturating_sub(cap);
+        self.channel_viewport_offset = (self.channel_viewport_offset + n).min(max);
     }
 
     pub fn is_recording(&self) -> bool {

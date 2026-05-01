@@ -3,9 +3,10 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 use crate::app::App;
 use crate::channel::Channel;
-use crate::ui::widgets::vertical_meter;
+use crate::ui::widgets::{key_hint, vertical_meter};
 
 const STRIP_WIDTH: u16 = 14;
+const METER_WIDTH: usize = 3;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let channels: Vec<&Channel> = app
@@ -16,53 +17,76 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
     let armed_count = channels.iter().filter(|c| c.armed).count();
     let total = app.engine.channel_count();
-    let title = format!(" Channels — {}/{} armed ", armed_count, total);
-    let hint = Line::from(vec![
-        Span::styled("[C]", Style::default().fg(Color::Cyan)),
-        Span::raw(" select "),
-    ])
-    .right_aligned();
+
     let block = Block::default()
-        .title(title)
-        .title(hint)
         .borders(Borders::ALL)
         .padding(Padding::new(2, 2, 1, 1))
         .border_style(Style::default().fg(Color::DarkGray));
     let inner = block.inner(area);
-    frame.render_widget(block, area);
 
-    if channels.is_empty() {
-        return;
+    // When the list overflows the panel, reserve 1 col on each side
+    // for the scroll chevrons so strips and chevrons never collide.
+    let needs_scroll = channels.len() > (inner.width / STRIP_WIDTH) as usize;
+    let strip_area = if needs_scroll {
+        Rect::new(
+            inner.x + 1,
+            inner.y,
+            inner.width.saturating_sub(2),
+            inner.height,
+        )
+    } else {
+        inner
+    };
+
+    let capacity = (strip_area.width / STRIP_WIDTH) as usize;
+    app.last_strip_capacity.set(capacity);
+    let max_offset = channels.len().saturating_sub(capacity);
+    let offset = app.channel_viewport_offset.min(max_offset);
+    let end = (offset + capacity).min(channels.len());
+    let off_left = offset;
+    let off_right = channels.len().saturating_sub(end);
+
+    let title = format!(" Channels — {}/{} armed ", armed_count, total);
+    frame.render_widget(block.title(title).title(title_hint()), area);
+
+    if off_left > 0 {
+        draw_edge_chevrons(frame, inner.x, inner, "◀");
+    }
+    if off_right > 0 {
+        draw_edge_chevrons(frame, inner.x + inner.width - 1, inner, "▶");
     }
 
+    let visible = &channels[offset..end];
     let constraints: Vec<Constraint> =
-        std::iter::repeat_n(Constraint::Max(STRIP_WIDTH), channels.len())
-            .chain(std::iter::once(Constraint::Fill(1)))
-            .collect();
+        std::iter::repeat_n(Constraint::Length(STRIP_WIDTH), visible.len()).collect();
     let strips = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(constraints)
-        .split(inner);
+        .split(strip_area);
 
-    let meter_width = compute_meter_width(strips[0].width);
-
-    for (i, channel) in channels.iter().enumerate() {
-        channel_strip(frame, strips[i], channel, app, meter_width);
+    for (i, channel) in visible.iter().enumerate() {
+        channel_strip(frame, strips[i], channel, app);
     }
 }
 
-fn compute_meter_width(strip_width: u16) -> usize {
-    match strip_width {
-        0..=5 => 1,
-        6..=10 => 2,
-        11..=18 => 3,
-        19..=30 => 4,
-        31..=50 => 6,
-        _ => 8,
-    }
+fn title_hint() -> Line<'static> {
+    let mut spans = Vec::new();
+    spans.extend(key_hint("C", "select  ", Color::Cyan));
+    spans.extend(key_hint("[]", "scroll ", Color::Cyan));
+    Line::from(spans).right_aligned()
 }
 
-fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App, meter_width: usize) {
+/// Marks the top and bottom rows of a 1-col gutter with a chevron
+/// glyph. Cheaper than rendering a Paragraph into two 1×1 rects.
+fn draw_edge_chevrons(frame: &mut Frame, x: u16, inner: Rect, glyph: &str) {
+    let style = Style::default().fg(Color::DarkGray);
+    let buf = frame.buffer_mut();
+    let bottom = inner.y + inner.height.saturating_sub(1);
+    buf.set_string(x, inner.y, glyph, style);
+    buf.set_string(x, bottom, glyph, style);
+}
+
+fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App) {
     let chunks = strip_chunks(area);
     let i = channel.index as usize;
 
@@ -71,7 +95,7 @@ fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App, me
     let lines = vertical_meter(
         level,
         Some(peak),
-        meter_width,
+        METER_WIDTH,
         chunks[0].height as usize,
         !channel.armed,
     );
