@@ -1,3 +1,5 @@
+mod signal;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -9,9 +11,9 @@ use cpal::{
     SampleFormat, StreamInstant, SupportedBufferSize, SupportedStreamConfig,
     SupportedStreamConfigRange,
 };
-use rand::Rng;
 
 use crate::audio::Device;
+use signal::Signal;
 
 const SAMPLE_RATE: u32 = 48_000;
 const BUFFER_FRAMES: usize = 512;
@@ -108,7 +110,7 @@ impl DeviceTrait for FakeDevice {
         &self,
         config: &cpal::StreamConfig,
         _sample_format: SampleFormat,
-        mut data_callback: D,
+        data_callback: D,
         _error_callback: E,
         _timeout: Option<Duration>,
     ) -> Result<Self::Stream, cpal::BuildStreamError>
@@ -116,46 +118,16 @@ impl DeviceTrait for FakeDevice {
         D: FnMut(&Data, &InputCallbackInfo) + Send + 'static,
         E: FnMut(cpal::StreamError) + Send + 'static,
     {
-        let total_channels = config.channels as usize;
-        let sample_rate = config.sample_rate;
-
         let controls = Arc::new(StreamControls {
             exit: AtomicBool::new(false),
             pause: AtomicBool::new(true),
         });
-        let thread_controls = controls.clone();
-
-        let handle = thread::spawn(move || {
-            let start = Instant::now();
-            let mut buffer = vec![0.0f32; BUFFER_FRAMES * total_channels];
-            let mut rng = rand::thread_rng();
-            let tick = Duration::from_secs_f32(BUFFER_FRAMES as f32 / sample_rate as f32);
-
-            while !thread_controls.exit.load(Ordering::Relaxed) {
-                thread::sleep(tick);
-                if thread_controls.pause.load(Ordering::Relaxed) {
-                    continue;
-                }
-
-                for sample in buffer.iter_mut() {
-                    *sample = rng.gen_range(-0.1..0.1);
-                }
-
-                let data = unsafe {
-                    Data::from_parts(buffer.as_mut_ptr().cast(), buffer.len(), SampleFormat::F32)
-                };
-
-                let elapsed = Instant::now().duration_since(start);
-                let stream_instant =
-                    StreamInstant::new(elapsed.as_secs() as i64, elapsed.subsec_nanos());
-                let timestamp = InputStreamTimestamp {
-                    callback: stream_instant,
-                    capture: stream_instant,
-                };
-                data_callback(&data, &InputCallbackInfo::new(timestamp));
-            }
-        });
-
+        let handle = run_pump(
+            controls.clone(),
+            config.channels as usize,
+            config.sample_rate,
+            data_callback,
+        );
         Ok(FakeStream {
             controls,
             handle: Some(handle),
@@ -197,4 +169,46 @@ impl Drop for FakeStream {
             let _ = h.join();
         }
     }
+}
+
+/// Spawns the audio-thread loop: sleep one buffer's worth, fill with
+/// generated samples, hand off to the user's data callback as a
+/// `cpal::Data` view. Exits when `controls.exit` is set; skips the
+/// callback while `controls.pause` is set.
+fn run_pump<D>(
+    controls: Arc<StreamControls>,
+    total_channels: usize,
+    sample_rate: u32,
+    mut data_callback: D,
+) -> JoinHandle<()>
+where
+    D: FnMut(&Data, &InputCallbackInfo) + Send + 'static,
+{
+    thread::spawn(move || {
+        let start = Instant::now();
+        let mut buffer = vec![0.0f32; BUFFER_FRAMES * total_channels];
+        let mut signal = Signal::new(total_channels, sample_rate);
+        let tick = Duration::from_secs_f32(BUFFER_FRAMES as f32 / sample_rate as f32);
+
+        while !controls.exit.load(Ordering::Relaxed) {
+            thread::sleep(tick);
+            if controls.pause.load(Ordering::Relaxed) {
+                continue;
+            }
+
+            signal.fill(&mut buffer);
+
+            let data = unsafe {
+                Data::from_parts(buffer.as_mut_ptr().cast(), buffer.len(), SampleFormat::F32)
+            };
+            let elapsed = Instant::now().duration_since(start);
+            let stream_instant =
+                StreamInstant::new(elapsed.as_secs() as i64, elapsed.subsec_nanos());
+            let timestamp = InputStreamTimestamp {
+                callback: stream_instant,
+                capture: stream_instant,
+            };
+            data_callback(&data, &InputCallbackInfo::new(timestamp));
+        }
+    })
 }
