@@ -42,11 +42,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let meter_width = compute_meter_width(strips[0].width);
 
     for (i, channel) in channels.iter().enumerate() {
-        if channel.armed {
-            channel_strip(frame, strips[i], channel, app, meter_width);
-        } else {
-            unarmed_strip(frame, strips[i], channel);
-        }
+        channel_strip(frame, strips[i], channel, app, meter_width);
     }
 }
 
@@ -63,36 +59,45 @@ fn compute_meter_width(strip_width: u16) -> usize {
 
 fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App, meter_width: usize) {
     let chunks = strip_chunks(area);
-
     let i = channel.index as usize;
+
     let level = app.display_levels[i];
     let peak = app.peak_holds[i];
-    let lines = vertical_meter(level, Some(peak), meter_width, chunks[0].height as usize);
-    let meter = Paragraph::new(lines).alignment(Alignment::Center);
-    frame.render_widget(meter, chunks[0]);
+    let lines = vertical_meter(
+        level,
+        Some(peak),
+        meter_width,
+        chunks[0].height as usize,
+        !channel.armed,
+    );
+    frame.render_widget(
+        Paragraph::new(lines).alignment(Alignment::Center),
+        chunks[0],
+    );
 
-    let header = Paragraph::new(format!("Ch {:>2}", channel.index)).alignment(Alignment::Center);
-    frame.render_widget(header, chunks[1]);
+    let (glyph, glyph_color) = if channel.armed {
+        ("●", Color::Red)
+    } else {
+        ("○", Color::DarkGray)
+    };
+    let name_style = if channel.armed {
+        Style::default()
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let header = Line::from(vec![
+        Span::styled(glyph, Style::default().fg(glyph_color)),
+        Span::raw(" "),
+        Span::styled(format!("Ch {:>2}", channel.index), name_style),
+    ]);
+    frame.render_widget(
+        Paragraph::new(header).alignment(Alignment::Center),
+        chunks[1],
+    );
 
     let label_text = channel.label.as_deref().unwrap_or("—");
     let label = Paragraph::new(label_text.to_string())
         .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center);
-    frame.render_widget(label, chunks[2]);
-}
-
-fn unarmed_strip(frame: &mut Frame, area: Rect, channel: &Channel) {
-    let chunks = strip_chunks(area);
-
-    let dim = Style::default().fg(Color::DarkGray);
-    let header = Paragraph::new(format!("Ch {:>2}", channel.index))
-        .style(dim)
-        .alignment(Alignment::Center);
-    frame.render_widget(header, chunks[1]);
-
-    let label_text = channel.label.as_deref().unwrap_or("—");
-    let label = Paragraph::new(label_text.to_string())
-        .style(dim)
         .alignment(Alignment::Center);
     frame.render_widget(label, chunks[2]);
 }

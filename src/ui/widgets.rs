@@ -99,7 +99,7 @@ pub fn horizontal_meter(level: f32, peak_hold: Option<f32>, width: usize) -> Vec
 
     let mut cells_used = full_cells;
     if partial > 0 {
-        let color = position_color(full_cells, warn_cells, clip_cells);
+        let color = position_color(full_cells, warn_cells, clip_cells, false);
         spans.push(Span::styled(
             PARTIAL_GLYPHS[partial - 1],
             Style::default().fg(color).bg(METER_TRACK_BG),
@@ -144,6 +144,7 @@ pub fn vertical_meter(
     peak_hold: Option<f32>,
     width: usize,
     height: usize,
+    dim: bool,
 ) -> Vec<Line<'static>> {
     const PARTIAL_GLYPHS: [&str; 7] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"];
 
@@ -163,10 +164,12 @@ pub fn vertical_meter(
         }
     });
 
+    let peak_color = if dim { Color::DarkGray } else { Color::White };
+
     let mut lines = Vec::with_capacity(height);
     for row in 0..height {
         let pos_from_bottom = height - 1 - row;
-        let color = position_color(pos_from_bottom, warn_rows, clip_rows);
+        let color = position_color(pos_from_bottom, warn_rows, clip_rows, dim);
 
         let span = if pos_from_bottom < full_rows {
             Span::styled("█".repeat(width), Style::default().fg(color))
@@ -176,7 +179,7 @@ pub fn vertical_meter(
                 Style::default().fg(color),
             )
         } else if peak_row_from_bottom == Some(pos_from_bottom) {
-            Span::styled("▔".repeat(width), Style::default().fg(Color::White))
+            Span::styled("▔".repeat(width), Style::default().fg(peak_color))
         } else {
             Span::raw(" ".repeat(width))
         };
@@ -197,13 +200,15 @@ fn to_db(level: f32) -> f32 {
 
 /// Color a single cell by its position on the dB scale, not by the bar's peak.
 /// Mirrors Logic's behavior: bottom of bar stays green even when peaks clip.
-fn position_color(pos: usize, warn_pos: usize, clip_pos: usize) -> Color {
-    if pos >= clip_pos {
-        BAND_RED
-    } else if pos >= warn_pos {
-        BAND_YELLOW
-    } else {
-        BAND_GREEN
+/// When `dim`, returns the deep-dim variant for inactive/unarmed contexts.
+fn position_color(pos: usize, warn_pos: usize, clip_pos: usize, dim: bool) -> Color {
+    match (pos >= clip_pos, pos >= warn_pos, dim) {
+        (true, _, false) => BAND_RED,
+        (true, _, true) => BAND_RED_DIM,
+        (false, true, false) => BAND_YELLOW,
+        (false, true, true) => BAND_YELLOW_DIM,
+        (false, false, false) => BAND_GREEN,
+        (false, false, true) => BAND_GREEN_DIM,
     }
 }
 
@@ -568,12 +573,19 @@ mod tests {
 
     #[test]
     fn position_color_promotes_through_bands() {
-        assert_eq!(position_color(0, 5, 8), BAND_GREEN);
-        assert_eq!(position_color(4, 5, 8), BAND_GREEN);
-        assert_eq!(position_color(5, 5, 8), BAND_YELLOW);
-        assert_eq!(position_color(7, 5, 8), BAND_YELLOW);
-        assert_eq!(position_color(8, 5, 8), BAND_RED);
-        assert_eq!(position_color(99, 5, 8), BAND_RED);
+        assert_eq!(position_color(0, 5, 8, false), BAND_GREEN);
+        assert_eq!(position_color(4, 5, 8, false), BAND_GREEN);
+        assert_eq!(position_color(5, 5, 8, false), BAND_YELLOW);
+        assert_eq!(position_color(7, 5, 8, false), BAND_YELLOW);
+        assert_eq!(position_color(8, 5, 8, false), BAND_RED);
+        assert_eq!(position_color(99, 5, 8, false), BAND_RED);
+    }
+
+    #[test]
+    fn position_color_dim_returns_dim_band_variants() {
+        assert_eq!(position_color(0, 5, 8, true), BAND_GREEN_DIM);
+        assert_eq!(position_color(5, 5, 8, true), BAND_YELLOW_DIM);
+        assert_eq!(position_color(8, 5, 8, true), BAND_RED_DIM);
     }
 
     #[test]
