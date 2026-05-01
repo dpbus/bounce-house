@@ -24,9 +24,12 @@ impl Device {
             .default_input_config()
             .expect("No default input config")
             .into();
-        let name = cpal_device.name().unwrap_or_else(|_| "Unknown".to_string());
+        let name = cpal_device
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
         let channel_count = cpal_config.channels;
-        let sample_rate = SampleRate(cpal_config.sample_rate.0);
+        let sample_rate = SampleRate(cpal_config.sample_rate);
 
         Device {
             cpal_device,
