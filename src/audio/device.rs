@@ -11,15 +11,14 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn list() -> Vec<Device> {
-        let host = cpal::default_host();
+    pub fn list(host: &cpal::Host) -> Vec<Device> {
         let devices = host
             .input_devices()
             .expect("Failed to enumerate input devices");
         devices.map(Device::from_cpal).collect()
     }
 
-    fn from_cpal(cpal_device: cpal::Device) -> Self {
+    pub(super) fn from_cpal(cpal_device: cpal::Device) -> Self {
         let cpal_config: cpal::StreamConfig = cpal_device
             .default_input_config()
             .expect("No default input config")

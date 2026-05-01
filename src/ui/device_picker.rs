@@ -12,9 +12,10 @@ use crate::audio::Device;
 /// - 0 devices → returns `NotFound` error
 /// - 1 device  → auto-picks, no UI
 /// - 2+ devices → renders a picker until the user selects with Enter
-pub fn pick(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<Device> {
-    let mut devices = Device::list();
-
+pub fn pick(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    mut devices: Vec<Device>,
+) -> io::Result<Device> {
     if devices.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,

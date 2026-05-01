@@ -25,6 +25,7 @@ use crossterm::{
 use ratatui::prelude::*;
 
 use crate::app::App;
+use crate::audio;
 use crate::settings::Settings;
 use crate::template::Template;
 use crate::ui::view::View;
@@ -47,7 +48,8 @@ fn bootstrap(
     settings: Settings,
     template: Option<Template>,
 ) -> io::Result<()> {
-    let device = match device_picker::pick(terminal) {
+    let devices = audio::list_devices();
+    let device = match device_picker::pick(terminal, devices) {
         Ok(d) => d,
         Err(e) if e.kind() == io::ErrorKind::Interrupted => return Ok(()),
         Err(e) => return Err(e),
