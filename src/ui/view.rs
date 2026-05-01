@@ -9,7 +9,7 @@ use crate::ui::footer;
 use crate::ui::header;
 use crate::ui::input;
 use crate::ui::modals::ActiveModal;
-use crate::ui::panels::{meters, timeline, waveform};
+use crate::ui::panels::{channel_strips, timeline, waveform};
 use crate::ui::take_naming::TakeNaming;
 
 const HEADER_HEIGHT: u16 = 1;
@@ -153,7 +153,7 @@ impl View {
 
         header::draw(frame, header_area, app, self);
         waveform::draw(frame, main_v[0], app);
-        meters::draw(frame, main_v[2], app);
+        channel_strips::draw(frame, main_v[2], app);
         timeline::draw(frame, body_h[1], app, self);
         footer::draw(frame, footer_area, app, self);
 

@@ -68,7 +68,6 @@ fn left(app: &App, view: &View) -> Line<'static> {
                 "record  ",
                 Color::Cyan,
             ));
-            spans.extend(key_hint("C", "channels  ", Color::Cyan));
             spans.extend(key_hint_when(
                 app.has_unbound_marker(),
                 "N",
