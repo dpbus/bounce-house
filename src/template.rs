@@ -4,14 +4,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::channel::Channel;
+use crate::live_channel::LiveChannel;
 
 #[derive(Serialize, Deserialize)]
 pub struct Template {
     pub name: String,
     pub device_name: String,
     #[serde(default)]
-    pub channels: Vec<Channel>,
+    pub channels: Vec<LiveChannel>,
 }
 
 impl Template {
@@ -68,13 +68,13 @@ mod tests {
     use tempfile::tempdir;
 
     fn make(name: &str) -> Template {
-        let mut ch0 = Channel::new(0);
+        let mut ch0 = LiveChannel::new(0);
         ch0.label = Some("Vocals".into());
         ch0.armed = true;
         Template {
             name: name.into(),
             device_name: "Mock Device".into(),
-            channels: vec![ch0, Channel::new(1)],
+            channels: vec![ch0, LiveChannel::new(1)],
         }
     }
 

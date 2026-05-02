@@ -5,7 +5,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::app::App;
-use crate::channel::Channel;
+use crate::live_channel::LiveChannel;
 use crate::ui::Action;
 use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
@@ -57,7 +57,7 @@ impl ChannelPickerModal {
                 Action::Stay
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                let max = app.session.channels().len().saturating_sub(1);
+                let max = app.live_channels.len().saturating_sub(1);
                 if self.cursor < max {
                     self.cursor += 1;
                 }
@@ -107,12 +107,11 @@ impl ChannelPickerModal {
     }
 
     fn focused_channel_index(&self, app: &App) -> Option<u16> {
-        app.session.channels().get(self.cursor).map(|c| c.index)
+        app.live_channels.get(self.cursor).map(|c| c.index)
     }
 
     fn focused_label(&self, app: &App) -> String {
-        app.session
-            .channels()
+        app.live_channels
             .get(self.cursor)
             .and_then(|c| c.label.clone())
             .unwrap_or_default()
@@ -147,9 +146,9 @@ impl ChannelPickerModal {
         // Channel rows interleaved with a dim under-meter separator —
         // breathing room plus a subtle anchor right where adjacent
         // armed meters would otherwise visually merge.
-        let total = app.session.channels().len();
+        let total = app.live_channels.len();
         let mut items: Vec<ListItem> = Vec::with_capacity(total * 2);
-        for (i, channel) in app.session.channels().iter().enumerate() {
+        for (i, channel) in app.live_channels.iter().enumerate() {
             let focused = i == self.cursor;
             let renaming_input = if focused {
                 self.renaming.as_ref()
@@ -213,7 +212,7 @@ fn separator_row() -> Line<'static> {
 }
 
 fn channel_row(
-    channel: &Channel,
+    channel: &LiveChannel,
     level: f32,
     peak: f32,
     focused: bool,

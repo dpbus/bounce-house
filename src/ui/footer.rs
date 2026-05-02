@@ -63,7 +63,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
         }
         RecordingState::Idle => {
             spans.extend(key_hint_when(
-                app.session.armed_channels().next().is_some(),
+                app.armed_channels().next().is_some(),
                 "R",
                 "record  ",
                 Color::Cyan,

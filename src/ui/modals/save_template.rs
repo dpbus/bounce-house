@@ -63,7 +63,7 @@ impl SaveTemplateModal {
     }
 
     pub fn draw(&self, frame: &mut Frame, app: &App) {
-        let n_channels = app.session.channels().len() as u16;
+        let n_channels = app.live_channels.len() as u16;
         let layout = pick_layout(n_channels);
         let inner = modal(frame, "Save Template", layout.width, layout.height);
 
@@ -82,12 +82,8 @@ impl SaveTemplateModal {
             .split(inner);
 
         frame.render_widget(Paragraph::new(header_lines(app)), chunks[0]);
-        let channels: Vec<Line<'static>> = app
-            .session
-            .channels()
-            .iter()
-            .map(channel_preview_row)
-            .collect();
+        let channels: Vec<Line<'static>> =
+            app.live_channels.iter().map(channel_preview_row).collect();
         flow_columns(frame, chunks[2], &channels, layout.cols as u32);
         frame.render_widget(Paragraph::new(save_as_line(&self.input)), chunks[4]);
         frame.render_widget(Paragraph::new(hints_line()).centered(), chunks[6]);
@@ -115,7 +111,7 @@ fn pick_layout(n_channels: u16) -> ContentLayout {
 
 fn header_lines(app: &App) -> Vec<Line<'static>> {
     let total = app.engine.channel_count() as usize;
-    let armed = app.session.armed_channels().count();
+    let armed = app.armed_channels().count();
     vec![
         labeled("Device:    ", app.engine.device_name().to_string()),
         labeled("Channels:  ", channels_summary(armed, total)),

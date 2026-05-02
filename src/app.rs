@@ -7,6 +7,7 @@ use chrono::{DateTime, Local};
 use crate::audio::{Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::{Capture, CaptureError};
+use crate::live_channel::LiveChannel;
 use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
@@ -27,6 +28,7 @@ pub struct App {
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub bounce_pool: BouncePool,
     pub capture: Option<Capture>,
+    pub live_channels: Vec<LiveChannel>,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
     pub level_history: VecDeque<LevelSample>,
@@ -80,7 +82,8 @@ impl App {
     pub fn new(device: Device, settings: Settings) -> Self {
         let (engine, levels_consumer) = EngineHandle::start(device);
         let n = engine.channel_count() as usize;
-        let session = Session::new(engine.channel_count(), engine.sample_rate(), &settings);
+        let live_channels = (0..engine.channel_count()).map(LiveChannel::new).collect();
+        let session = Session::new(engine.sample_rate(), &settings);
         App {
             settings,
             session,
@@ -88,6 +91,7 @@ impl App {
             levels_consumer,
             bounce_pool: BouncePool::start(),
             capture: None,
+            live_channels,
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
             level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
@@ -100,12 +104,16 @@ impl App {
         }
     }
 
+    pub fn armed_channels(&self) -> impl Iterator<Item = &LiveChannel> + '_ {
+        self.live_channels.iter().filter(|c| c.armed)
+    }
+
     pub fn scroll_strips_left(&mut self, n: usize) {
         self.channel_viewport_offset = self.channel_viewport_offset.saturating_sub(n);
     }
 
     pub fn scroll_strips_right(&mut self, n: usize) {
-        let visible = self.session.channels().iter().filter(|c| c.armed).count();
+        let visible = self.armed_channels().count();
         let cap = self.last_strip_capacity.get().max(1);
         let max = visible.saturating_sub(cap);
         self.channel_viewport_offset = (self.channel_viewport_offset + n).min(max);
@@ -169,7 +177,7 @@ impl App {
 
     /// Drains observations into both meter decay state and waveform history.
     fn drain_level_observations(&mut self) {
-        let n_channels = self.session.channels().len();
+        let n_channels = self.live_channels.len();
         if self.tick_peaks.len() < n_channels {
             self.tick_peaks.resize(n_channels, 0.0);
         }
@@ -179,7 +187,7 @@ impl App {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
                 self.tick_peaks[i] = self.tick_peaks[i].max(peak);
-                if self.session.channels()[i].armed {
+                if self.live_channels[i].armed {
                     combined = combined.max(peak);
                 }
             }
@@ -223,14 +231,11 @@ impl App {
         if self.capture.is_some() {
             return Err(AppError::NotIdle);
         }
-        // If a recording already exists in this session (we stopped
-        // earlier), fork a fresh session so the new capture gets its
-        // own dir and timeline. Channels carry over; previous WAVs and
-        // bounces stay where they are on disk.
         if self.session.has_recording() {
             self.session = self.session.fork_for_new_recording(&self.settings);
         }
-        let capture = Capture::start(&self.engine, &mut self.session)?;
+        let armed_channels: Vec<LiveChannel> = self.armed_channels().cloned().collect();
+        let capture = Capture::start(&self.engine, &mut self.session, &armed_channels)?;
         self.capture = Some(capture);
         Ok(())
     }
@@ -285,26 +290,24 @@ impl App {
         let template = Template {
             name: name.to_string(),
             device_name: self.engine.device_name().to_string(),
-            channels: self.session.channels().to_vec(),
+            channels: self.live_channels.clone(),
         };
         template.save(&path)
     }
 
-    /// Files that fail to deserialize are silently skipped; errors
-    /// reading the directory yield an empty list.
     pub fn list_templates(&self) -> Vec<Template> {
         template::list(&self.settings.templates_dir).unwrap_or_default()
     }
 
-    /// Applies `template` to the session. Out-of-range template indices
-    /// are silently dropped; channels on the device not covered by the
-    /// template keep their fresh defaults.
+    /// Applies `template` to the live mix. Out-of-range template
+    /// indices are silently dropped; channels on the device not covered
+    /// by the template keep their fresh defaults.
     pub fn load_template(&mut self, template: &Template) {
         for tmpl_channel in &template.channels {
-            self.session
-                .set_channel_label(tmpl_channel.index, tmpl_channel.label.clone());
-            self.session
-                .set_channel_armed(tmpl_channel.index, tmpl_channel.armed);
+            if let Some(channel) = self.live_channels.get_mut(tmpl_channel.index as usize) {
+                channel.label = tmpl_channel.label.clone();
+                channel.armed = tmpl_channel.armed;
+            }
         }
     }
 
@@ -312,10 +315,14 @@ impl App {
         if self.is_recording() {
             return;
         }
-        self.session.toggle_channel_armed(channel_index);
+        if let Some(channel) = self.live_channels.get_mut(channel_index as usize) {
+            channel.armed = !channel.armed;
+        }
     }
 
     pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
-        self.session.set_channel_label(channel_index, label);
+        if let Some(channel) = self.live_channels.get_mut(channel_index as usize) {
+            channel.label = label;
+        }
     }
 }

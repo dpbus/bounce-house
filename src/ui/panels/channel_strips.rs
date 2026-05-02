@@ -2,14 +2,14 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 use crate::app::App;
-use crate::channel::Channel;
+use crate::live_channel::LiveChannel;
 use crate::ui::widgets::{key_hint, vertical_meter};
 
 const STRIP_WIDTH: u16 = 14;
 const METER_WIDTH: usize = 3;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let channels: Vec<&Channel> = app.session.channels().iter().filter(|c| c.armed).collect();
+    let channels: Vec<&LiveChannel> = app.live_channels.iter().filter(|c| c.armed).collect();
     let total = app.engine.channel_count();
 
     let block = Block::default()
@@ -80,7 +80,7 @@ fn draw_edge_chevrons(frame: &mut Frame, x: u16, inner: Rect, glyph: &str) {
     buf.set_string(x, bottom, glyph, style);
 }
 
-fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App) {
+fn channel_strip(frame: &mut Frame, area: Rect, channel: &LiveChannel, app: &App) {
     let chunks = strip_chunks(area);
     let i = channel.index as usize;
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::audio::{ChannelOutput, DiskWriter, EngineHandle};
+use crate::live_channel::LiveChannel;
 use crate::session::Session;
 
 #[derive(Debug)]
@@ -19,9 +20,13 @@ pub struct Capture {
 }
 
 impl Capture {
-    pub fn start(engine: &EngineHandle, session: &mut Session) -> Result<Self, CaptureError> {
+    pub fn start(
+        engine: &EngineHandle,
+        session: &mut Session,
+        armed_channels: &[LiveChannel],
+    ) -> Result<Self, CaptureError> {
         let recorded = session
-            .start_recording()
+            .start_recording(armed_channels)
             .ok_or(CaptureError::NothingArmed)?;
 
         let outputs: Vec<ChannelOutput> = recorded
