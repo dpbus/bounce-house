@@ -39,7 +39,7 @@ impl Capture {
 
         for output in &outputs {
             if let Some(parent) = output.path.parent() {
-                fs::create_dir_all(parent).expect("Failed to create channel dir");
+                fs::create_dir_all(parent).expect("Failed to create tracks dir");
             }
         }
 

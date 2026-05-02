@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::timeline::Take;
 use crate::units::SampleRate;
 
-type ChannelReader = WavReader<BufReader<File>>;
+type TrackReader = WavReader<BufReader<File>>;
 
 const CHUNK_SAMPLES: usize = 48_000;
 const FLUSH_TAIL_BYTES: usize = 7200;
@@ -37,7 +37,7 @@ pub struct BounceJob {
     /// layouts where multiple sessions share one bounces dir. None for
     /// nested layouts where `bounces_dir` is already session-specific.
     pub filename_prefix: Option<String>,
-    pub channel_files: Vec<PathBuf>,
+    pub track_files: Vec<PathBuf>,
     /// `None` if the recording has already stopped (file is finalized,
     /// immediately readable). `Some` while live; bouncer waits on it.
     pub flushed_samples: Option<Arc<AtomicU64>>,
@@ -110,8 +110,8 @@ fn wait_until_durable(job: &BounceJob) {
 }
 
 fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
-    if job.channel_files.is_empty() {
-        return Err("no channel files".to_string());
+    if job.track_files.is_empty() {
+        return Err("no track files".to_string());
     }
     fs::create_dir_all(&job.bounces_dir)
         .map_err(|e| format!("create dir {}: {}", job.bounces_dir.display(), e))?;
@@ -120,7 +120,7 @@ fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
     let (lufs, true_peak) = analyze_loudness(job, total)?;
     let gain = compute_normalization_gain(lufs, true_peak);
 
-    let readers = open_channel_readers(&job.channel_files, job.take.start_sample)?;
+    let readers = open_track_readers(&job.track_files, job.take.start_sample)?;
     let mut encoder = build_encoder(job.sample_rate)?;
     let path = crate::paths::unique_mp3_path(
         &job.bounces_dir,
@@ -135,12 +135,12 @@ fn bounce_take(job: &BounceJob) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// First pass over the take: sums per-channel WAVs to mono and feeds
+/// First pass over the take: sums per-track WAVs to mono and feeds
 /// the result to ebur128 as stereo (L=R), matching what the encode
 /// pass produces. Returns integrated LUFS and the max true-peak
 /// across L/R as a linear amplitude.
 fn analyze_loudness(job: &BounceJob, total: usize) -> Result<(f64, f64), String> {
-    let mut readers = open_channel_readers(&job.channel_files, job.take.start_sample)?;
+    let mut readers = open_track_readers(&job.track_files, job.take.start_sample)?;
     let mut analyzer = EbuR128::new(2, job.sample_rate.0, Mode::I | Mode::TRUE_PEAK)
         .map_err(|e| format!("ebur128 init: {:?}", e))?;
 
@@ -210,10 +210,7 @@ fn take_sample_count(take: &Take) -> Result<usize, String> {
     Ok(total)
 }
 
-fn open_channel_readers(
-    paths: &[PathBuf],
-    start_sample: u64,
-) -> Result<Vec<ChannelReader>, String> {
+fn open_track_readers(paths: &[PathBuf], start_sample: u64) -> Result<Vec<TrackReader>, String> {
     let mut readers = Vec::with_capacity(paths.len());
     for path in paths {
         let mut reader =
@@ -244,7 +241,7 @@ fn build_encoder(sample_rate: SampleRate) -> Result<Encoder, String> {
 }
 
 fn encode_to_file(
-    mut readers: Vec<ChannelReader>,
+    mut readers: Vec<TrackReader>,
     total: usize,
     gain: f32,
     encoder: &mut Encoder,
@@ -272,8 +269,8 @@ fn encode_to_file(
 }
 
 /// Reads up to `dst.len()` samples from each reader, sums into `dst`, scales.
-/// Returns the count actually written (limited by the shortest channel read).
-fn mix_chunk_into(readers: &mut [ChannelReader], dst: &mut [f32], scale: f32) -> usize {
+/// Returns the count actually written (limited by the shortest track read).
+fn mix_chunk_into(readers: &mut [TrackReader], dst: &mut [f32], scale: f32) -> usize {
     dst.fill(0.0);
     let mut min_read = dst.len();
     for reader in readers.iter_mut() {
@@ -416,7 +413,7 @@ mod tests {
 
     #[test]
     fn bounce_take_writes_an_mp3_file() {
-        // Smoke-test the full encode path: two channel WAVs, a take that
+        // Smoke-test the full encode path: two track WAVs, a take that
         // covers their full extent, run bounce_take, verify the MP3 exists
         // and is non-empty. Doesn't decode — that's a heavier test.
         let dir = tempdir().unwrap();
@@ -435,7 +432,7 @@ mod tests {
             sample_rate: SampleRate(48_000),
             bounces_dir: bounces_dir.clone(),
             filename_prefix: None,
-            channel_files: vec![ch0, ch1],
+            track_files: vec![ch0, ch1],
             flushed_samples: None,
         };
 
@@ -463,7 +460,7 @@ mod tests {
             sample_rate: SampleRate(48_000),
             bounces_dir: bounces_dir.clone(),
             filename_prefix: None,
-            channel_files: vec![ch0],
+            track_files: vec![ch0],
             flushed_samples: None,
         };
 

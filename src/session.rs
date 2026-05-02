@@ -5,14 +5,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::bounce::BounceEvent;
-use crate::channel::Channel;
 use crate::live_channel::LiveChannel;
 use crate::paths;
 use crate::settings::Settings;
 use crate::timeline::{BounceStatus, Take, Timeline};
+use crate::track::Track;
 use crate::units::SampleRate;
 
-const CHANNELS_DIR: &str = "channels";
+const TRACKS_DIR: &str = "tracks";
 
 #[derive(Serialize, Deserialize)]
 pub struct Session {
@@ -27,8 +27,8 @@ pub struct Session {
     end_sample: Option<u64>,
     #[serde(flatten)]
     timeline: Timeline,
-    #[serde(rename = "channel", default)]
-    channels: Vec<Channel>,
+    #[serde(rename = "track", default)]
+    tracks: Vec<Track>,
 }
 
 impl Session {
@@ -41,7 +41,7 @@ impl Session {
             dir,
             bounces_dir,
             bounces_filename_prefix: None,
-            channels: Vec::new(),
+            tracks: Vec::new(),
             end_sample: None,
             timeline: Timeline::new(sample_rate),
         }
@@ -63,8 +63,8 @@ impl Session {
         &self.dir
     }
 
-    pub fn channels(&self) -> &[Channel] {
-        &self.channels
+    pub fn tracks(&self) -> &[Track] {
+        &self.tracks
     }
 
     pub fn end_sample(&self) -> Option<u64> {
@@ -72,18 +72,15 @@ impl Session {
     }
 
     pub fn has_recording(&self) -> bool {
-        !self.channels.is_empty()
+        !self.tracks.is_empty()
     }
 
-    pub fn recording_channel_paths(&self) -> Vec<PathBuf> {
-        self.channels
-            .iter()
-            .map(|c| self.dir.join(&c.file))
-            .collect()
+    pub fn recording_track_paths(&self) -> Vec<PathBuf> {
+        self.tracks.iter().map(|t| self.dir.join(&t.file)).collect()
     }
 
-    fn channel_subpath(live: &LiveChannel) -> PathBuf {
-        Path::new(CHANNELS_DIR).join(channel_filename(live))
+    fn track_subpath(live: &LiveChannel) -> PathBuf {
+        Path::new(TRACKS_DIR).join(track_filename(live))
     }
 
     pub fn last_marker_unbound(&self) -> bool {
@@ -129,23 +126,23 @@ impl Session {
         self.persist();
     }
 
-    pub fn start_recording(&mut self, armed_channels: &[LiveChannel]) -> Option<Vec<Channel>> {
+    pub fn start_recording(&mut self, armed_channels: &[LiveChannel]) -> Option<Vec<Track>> {
         if armed_channels.is_empty() {
             return None;
         }
-        let channels: Vec<Channel> = armed_channels
+        let tracks: Vec<Track> = armed_channels
             .iter()
-            .map(|c| Channel {
+            .map(|c| Track {
                 index: c.index,
                 label: c.label.clone(),
-                file: Self::channel_subpath(c),
+                file: Self::track_subpath(c),
             })
             .collect();
-        self.channels = channels.clone();
+        self.tracks = tracks.clone();
         self.end_sample = None;
         self.timeline.mark(0);
         self.persist();
-        Some(channels)
+        Some(tracks)
     }
 
     pub fn stop_recording(&mut self, end_sample: u64) {
@@ -173,7 +170,7 @@ impl Session {
     }
 }
 
-fn channel_filename(channel: &LiveChannel) -> String {
+fn track_filename(channel: &LiveChannel) -> String {
     match channel.label.as_deref().map(str::trim) {
         Some(label) if !label.is_empty() => {
             format!("ch{:02}-{}.wav", channel.index, paths::filename_safe(label))
@@ -221,7 +218,7 @@ mod tests {
         let session = Session::new(SampleRate(48_000), &settings_in(dir.path()));
         assert!(!session.has_recording());
         assert!(session.end_sample().is_none());
-        assert!(session.channels().is_empty());
+        assert!(session.tracks().is_empty());
         assert!(session.timeline.markers().is_empty());
         assert!(session.timeline.takes().is_empty());
         assert!(session.bounces_filename_prefix.is_none());
@@ -245,10 +242,10 @@ mod tests {
         assert_eq!(recorded.len(), 1);
         assert_eq!(recorded[0].index, 0);
         assert_eq!(recorded[0].label.as_deref(), Some("Kick"));
-        assert_eq!(recorded[0].file, PathBuf::from("channels/ch00-Kick.wav"));
+        assert_eq!(recorded[0].file, PathBuf::from("tracks/ch00-Kick.wav"));
 
         assert!(session.has_recording());
-        assert_eq!(session.channels().len(), 1);
+        assert_eq!(session.tracks().len(), 1);
         assert!(session.end_sample().is_none());
 
         let markers: Vec<u64> = session
@@ -348,32 +345,32 @@ mod tests {
     }
 
     #[test]
-    fn channel_filename_uses_label_when_present() {
+    fn track_filename_uses_label_when_present() {
         assert_eq!(
-            channel_filename(&live(7, Some("Kick"), true)),
+            track_filename(&live(7, Some("Kick"), true)),
             "ch07-Kick.wav"
         );
     }
 
     #[test]
-    fn channel_filename_omits_label_when_blank() {
-        assert_eq!(channel_filename(&live(3, None, true)), "ch03.wav");
-        assert_eq!(channel_filename(&live(3, Some("   "), true)), "ch03.wav");
+    fn track_filename_omits_label_when_blank() {
+        assert_eq!(track_filename(&live(3, None, true)), "ch03.wav");
+        assert_eq!(track_filename(&live(3, Some("   "), true)), "ch03.wav");
     }
 
     #[test]
-    fn channel_filename_sanitizes_unsafe_label_chars() {
+    fn track_filename_sanitizes_unsafe_label_chars() {
         assert_eq!(
-            channel_filename(&live(0, Some("kick/snare"), true)),
+            track_filename(&live(0, Some("kick/snare"), true)),
             "ch00-kick_snare.wav"
         );
     }
 
     #[test]
-    fn channel_subpath_nests_under_channels_dir() {
+    fn track_subpath_nests_under_tracks_dir() {
         assert_eq!(
-            Session::channel_subpath(&live(0, Some("Kick"), true)),
-            std::path::PathBuf::from("channels/ch00-Kick.wav")
+            Session::track_subpath(&live(0, Some("Kick"), true)),
+            std::path::PathBuf::from("tracks/ch00-Kick.wav")
         );
     }
 
@@ -416,8 +413,8 @@ mod tests {
         assert_eq!(parsed.name, session.name);
         assert_eq!(parsed.end_sample(), session.end_sample());
         assert_eq!(parsed.sample_rate(), session.sample_rate());
-        assert_eq!(parsed.channels().len(), 1);
-        assert_eq!(parsed.channels()[0].label.as_deref(), Some("Kick"));
+        assert_eq!(parsed.tracks().len(), 1);
+        assert_eq!(parsed.tracks()[0].label.as_deref(), Some("Kick"));
         assert_eq!(parsed.timeline().markers().len(), 3);
         assert_eq!(parsed.timeline().takes().len(), 1);
         assert_eq!(parsed.timeline().takes()[0].name, "Verse");

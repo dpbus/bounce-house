@@ -2,13 +2,13 @@ mod app;
 mod audio;
 mod bounce;
 mod capture;
-mod channel;
 mod live_channel;
 mod paths;
 mod session;
 mod settings;
 mod template;
 mod timeline;
+mod track;
 mod ui;
 mod units;
 

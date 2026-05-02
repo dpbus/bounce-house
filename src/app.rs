@@ -279,7 +279,7 @@ impl App {
             sample_rate: self.session.sample_rate(),
             bounces_dir: self.session.bounces_dir.clone(),
             filename_prefix: self.session.bounces_filename_prefix.clone(),
-            channel_files: self.session.recording_channel_paths(),
+            track_files: self.session.recording_track_paths(),
             flushed_samples: self.capture.as_ref().map(|c| c.flushed_samples()),
         };
         self.bounce_pool.dispatch(job);
