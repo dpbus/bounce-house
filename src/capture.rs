@@ -31,9 +31,9 @@ impl Capture {
 
         let outputs: Vec<ChannelOutput> = recorded
             .iter()
-            .map(|r| ChannelOutput {
-                channel: r.index,
-                path: session.dir().join(&r.file),
+            .map(|track| ChannelOutput {
+                channel: track.index,
+                path: session.dir().join(&track.file),
             })
             .collect();
 

@@ -20,6 +20,17 @@ impl Channel {
 }
 
 #[cfg(test)]
+impl Channel {
+    pub(crate) fn fixture(index: u16, label: Option<&str>, armed: bool) -> Self {
+        Channel {
+            index,
+            label: label.map(String::from),
+            armed,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

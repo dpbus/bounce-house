@@ -79,8 +79,8 @@ impl Session {
         self.tracks.iter().map(|t| self.dir.join(&t.file)).collect()
     }
 
-    fn track_subpath(live: &Channel) -> PathBuf {
-        Path::new(TRACKS_DIR).join(track_filename(live))
+    fn track_subpath(channel: &Channel) -> PathBuf {
+        Path::new(TRACKS_DIR).join(track_filename(channel))
     }
 
     pub fn last_marker_unbound(&self) -> bool {
@@ -192,14 +192,6 @@ mod tests {
         }
     }
 
-    fn live(index: u16, label: Option<&str>, armed: bool) -> Channel {
-        Channel {
-            index,
-            label: label.map(String::from),
-            armed,
-        }
-    }
-
     #[test]
     fn new_derives_paths_from_settings_and_name() {
         let dir = tempdir().unwrap();
@@ -235,7 +227,7 @@ mod tests {
     fn start_recording_snapshots_provided_channels() {
         let dir = tempdir().unwrap();
         let mut session = Session::new(SampleRate(48_000), &settings_in(dir.path()));
-        let armed = vec![live(0, Some("Kick"), true)];
+        let armed = vec![Channel::fixture(0, Some("Kick"), true)];
 
         let recorded = session.start_recording(&armed).expect("non-empty");
 
@@ -270,7 +262,7 @@ mod tests {
     fn stop_recording_stamps_end_sample_and_drops_end_mark() {
         let dir = tempdir().unwrap();
         let mut session = Session::new(SampleRate(48_000), &settings_in(dir.path()));
-        let armed = vec![live(0, None, true)];
+        let armed = vec![Channel::fixture(0, None, true)];
         session.start_recording(&armed).expect("armed");
 
         session.stop_recording(96_000);
@@ -317,7 +309,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let settings = settings_in(dir.path());
         let mut original = Session::new(SampleRate(48_000), &settings);
-        let armed = vec![live(0, None, true)];
+        let armed = vec![Channel::fixture(0, None, true)];
         original.start_recording(&armed).expect("armed");
         original.stop_recording(48_000);
 
@@ -347,21 +339,24 @@ mod tests {
     #[test]
     fn track_filename_uses_label_when_present() {
         assert_eq!(
-            track_filename(&live(7, Some("Kick"), true)),
+            track_filename(&Channel::fixture(7, Some("Kick"), true)),
             "ch07-Kick.wav"
         );
     }
 
     #[test]
     fn track_filename_omits_label_when_blank() {
-        assert_eq!(track_filename(&live(3, None, true)), "ch03.wav");
-        assert_eq!(track_filename(&live(3, Some("   "), true)), "ch03.wav");
+        assert_eq!(track_filename(&Channel::fixture(3, None, true)), "ch03.wav");
+        assert_eq!(
+            track_filename(&Channel::fixture(3, Some("   "), true)),
+            "ch03.wav"
+        );
     }
 
     #[test]
     fn track_filename_sanitizes_unsafe_label_chars() {
         assert_eq!(
-            track_filename(&live(0, Some("kick/snare"), true)),
+            track_filename(&Channel::fixture(0, Some("kick/snare"), true)),
             "ch00-kick_snare.wav"
         );
     }
@@ -369,7 +364,7 @@ mod tests {
     #[test]
     fn track_subpath_nests_under_tracks_dir() {
         assert_eq!(
-            Session::track_subpath(&live(0, Some("Kick"), true)),
+            Session::track_subpath(&Channel::fixture(0, Some("Kick"), true)),
             std::path::PathBuf::from("tracks/ch00-Kick.wav")
         );
     }
@@ -381,7 +376,7 @@ mod tests {
     fn populated_session_in(dir: &std::path::Path) -> Session {
         let settings = settings_in(dir);
         let mut session = Session::new(SampleRate(48_000), &settings);
-        let armed = vec![live(0, Some("Kick"), true)];
+        let armed = vec![Channel::fixture(0, Some("Kick"), true)];
         session.start_recording(&armed).expect("non-empty");
         session
     }
