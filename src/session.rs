@@ -157,9 +157,10 @@ impl Session {
     }
 
     fn persist(&self) {
-        if !self.dir.exists() {
+        if !self.has_recording() {
             return;
         }
+        let _ = std::fs::create_dir_all(&self.dir);
         let toml = match toml::to_string_pretty(self) {
             Ok(s) => s,
             Err(_) => return,
@@ -383,7 +384,6 @@ mod tests {
     fn populated_session_in(dir: &std::path::Path) -> Session {
         let settings = settings_in(dir);
         let mut session = Session::new(SampleRate(48_000), &settings);
-        std::fs::create_dir_all(session.dir()).expect("create session dir");
         let armed = vec![live(0, Some("Kick"), true)];
         session.start_recording(&armed).expect("non-empty");
         session
