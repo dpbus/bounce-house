@@ -27,7 +27,7 @@ pub struct App {
     pub audio_input: AudioInput,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub bounce_pool: BouncePool,
-    pub capture: Option<Capture>,
+    pub runtime_mode: RuntimeMode,
     pub channels: Vec<Channel>,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
@@ -47,6 +47,35 @@ pub struct App {
     /// panel during draw, read by the scroll methods so they can
     /// clamp the offset to the same useful range the panel will show.
     pub last_strip_capacity: Cell<usize>,
+}
+
+pub enum RuntimeMode {
+    Idle,
+    Recording(Capture),
+}
+
+impl RuntimeMode {
+    pub fn is_idle(&self) -> bool {
+        matches!(self, RuntimeMode::Idle)
+    }
+
+    pub fn is_recording(&self) -> bool {
+        matches!(self, RuntimeMode::Recording(_))
+    }
+
+    pub fn capture(&self) -> Option<&Capture> {
+        match self {
+            RuntimeMode::Recording(c) => Some(c),
+            RuntimeMode::Idle => None,
+        }
+    }
+
+    pub fn capture_mut(&mut self) -> Option<&mut Capture> {
+        match self {
+            RuntimeMode::Recording(c) => Some(c),
+            RuntimeMode::Idle => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,7 +119,7 @@ impl App {
             audio_input,
             levels_consumer,
             bounce_pool: BouncePool::start(),
-            capture: None,
+            runtime_mode: RuntimeMode::Idle,
             channels,
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
@@ -120,11 +149,11 @@ impl App {
     }
 
     pub fn is_recording(&self) -> bool {
-        self.capture.is_some()
+        self.runtime_mode.is_recording()
     }
 
     pub fn recording_state(&self) -> RecordingState {
-        match &self.capture {
+        match self.runtime_mode.capture() {
             Some(c) if c.is_paused() => RecordingState::Paused,
             Some(_) => RecordingState::Recording,
             None => RecordingState::Idle,
@@ -132,7 +161,7 @@ impl App {
     }
 
     pub fn toggle_pause(&mut self) {
-        let Some(capture) = &mut self.capture else {
+        let Some(capture) = self.runtime_mode.capture_mut() else {
             return;
         };
         if capture.is_paused() {
@@ -143,18 +172,18 @@ impl App {
     }
 
     pub fn rel_sample_position(&self) -> Option<u64> {
-        self.capture.as_ref().map(|c| c.rel_sample_position())
+        self.runtime_mode.capture().map(|c| c.rel_sample_position())
     }
 
     pub fn relative_to_absolute(&self, rel: u64) -> Option<u64> {
-        self.capture.as_ref().map(|c| c.absolute(rel))
+        self.runtime_mode.capture().map(|c| c.absolute(rel))
     }
 
     pub fn recording_duration_secs(&self) -> Option<u64> {
         let sr = (self.session.sample_rate().0 as u64).max(1);
         let samples = self
-            .capture
-            .as_ref()
+            .runtime_mode
+            .capture()
             .map(|c| c.rel_sample_position())
             .or(self.session.end_sample())?;
         Some(samples / sr)
@@ -182,7 +211,7 @@ impl App {
             self.tick_peaks.resize(n_channels, 0.0);
         }
         self.tick_peaks[..n_channels].fill(0.0);
-        let recorded = self.capture.as_ref().is_some_and(|c| !c.is_paused());
+        let recorded = self.runtime_mode.capture().is_some_and(|c| !c.is_paused());
         while let Ok(obs) = self.levels_consumer.pop() {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
@@ -228,7 +257,7 @@ impl App {
     }
 
     pub fn start_recording(&mut self) -> Result<(), AppError> {
-        if self.capture.is_some() {
+        if !self.runtime_mode.is_idle() {
             return Err(AppError::NotIdle);
         }
         if self.session.has_recording() {
@@ -236,12 +265,14 @@ impl App {
         }
         let armed_channels: Vec<Channel> = self.armed_channels().cloned().collect();
         let capture = Capture::start(&self.audio_input, &mut self.session, &armed_channels)?;
-        self.capture = Some(capture);
+        self.runtime_mode = RuntimeMode::Recording(capture);
         Ok(())
     }
 
     pub fn stop_recording(&mut self) {
-        if let Some(capture) = self.capture.take() {
+        if let RuntimeMode::Recording(capture) =
+            std::mem::replace(&mut self.runtime_mode, RuntimeMode::Idle)
+        {
             capture.stop(&self.audio_input, &mut self.session);
         }
     }
@@ -280,7 +311,7 @@ impl App {
             bounces_dir: self.session.bounces_dir.clone(),
             filename_prefix: self.session.bounces_filename_prefix.clone(),
             track_files: self.session.recording_track_paths(),
-            flushed_samples: self.capture.as_ref().map(|c| c.flushed_samples()),
+            flushed_samples: self.runtime_mode.capture().map(|c| c.flushed_samples()),
         };
         self.bounce_pool.dispatch(job);
     }
