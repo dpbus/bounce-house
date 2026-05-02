@@ -8,7 +8,7 @@ each named take to a stereo MP3 in the background.
 
 - Record a full band session with each channel on its own lossless track
 - Mark and name takes by hand during play, without breaking flow
-- Bounce each take to a shareable MP3 automatically
+- Bounce each take to a shareable MP3 automatically, loudness-normalized
 - Never drop a sample — the audio callback never blocks, the ring buffer
   has 10 seconds of headroom, and on-disk state is flushed every second
 
@@ -23,8 +23,20 @@ Needs Rust (edition 2024) and a C compiler (LAME is built from source).
 cargo run --release
 ```
 
-Output goes to `~/Music/BounceHouse/Sessions/<timestamp>/`: one mono WAV per
-armed channel plus a stereo MP3 per named take.
+## Output layout
+
+```
+~/Music/BounceHouse/
+├── Sessions/<timestamp>/
+│   ├── session.toml          metadata: tracks, markers, takes, bounce status
+│   └── tracks/
+│       └── ch07-Kick.wav     one mono WAV per armed channel
+├── Bounces/<timestamp>/
+│   └── <take>.mp3            one stereo MP3 per named take
+└── Templates/<name>.toml     saved channel layouts
+
+~/.config/bounce-house/config.toml   override the paths above
+```
 
 ## Keys
 
@@ -39,6 +51,7 @@ armed channel plus a stereo MP3 per named take.
 | Recording | `Space` | Drop an unbound marker |
 | Recording | `N` | Name the last unbound marker as a take |
 | Recording | `Backspace` | Delete the trailing unbound marker |
+| Recording | `P` | Pause / resume |
 | Recording | `Esc` | Stop (press again to confirm) |
 | Naming | `Enter` / `Esc` | Save / cancel |
 | Channel picker | `↑↓` / `j`/`k` | Move cursor |
@@ -50,52 +63,66 @@ The channel picker shows live meters for every input on the device,
 armed or not — useful for identifying which physical input carries
 which signal.
 
+## Templates
+
+Channel labels and arm states can be saved as templates and loaded later.
+Save via the in-app modal (writes to `Templates/<name>.toml`); load at
+launch with `-t <name>` or `-t <path>`. Loading applies labels + arm
+states to the current device's channels by index.
+
 ## Bouncing
 
-Bouncing happens automatically when a take is named. The Recording
-panel shows per-take status next to the duration. MP3s are 192 kbps
-stereo, with all armed channels summed using `1/√N` scaling.
+Bouncing happens automatically when a take is named. The Recording panel
+shows per-take status next to the duration. Each MP3 is 192 kbps stereo,
+summed from all recorded tracks with `1/√N` scaling and **loudness-
+normalized to -14 LUFS** (Spotify/YouTube target), with a `-1 dBTP`
+true-peak ceiling so the gain stage never clips. Silent takes (below
+-70 LUFS) skip normalization.
 
-Bitrate, channel weighting, and output format are hardcoded for now.
-Channel labels and arm states reset on every run. Both are tracked on
-the roadmap.
+Bitrate, LUFS target, and channel weighting are hardcoded for now —
+on the roadmap.
 
 ## How it works
 
 ```
 src/
-├── main.rs           entry
-├── app.rs            App + AppState (UI state machine)
-├── audio/            cpal stream, ring buffer, per-channel WAV writer
-├── bounce.rs         worker thread: hound → sum → LAME → mp3
-├── recording.rs      one R-press-to-stop pass; owns the writer
+├── main.rs           entry, CLI parsing, optional template arg
+├── app.rs            App: top-level runtime state (session, audio_input, capture, ...)
+├── audio/            cpal input wrapper, ring buffer, per-track WAV writer
+├── bounce.rs         worker thread: hound → sum → LUFS-normalize → LAME → mp3
+├── capture.rs        runtime controller for an active recording (spawns/joins disk writer)
+├── session.rs        Session: tracks + timeline + paths; persists to session.toml on mutation
+├── track.rs          recorded artifact (one per channel armed at record-start)
+├── channel.rs        live mixer-row config (index, label, armed)
 ├── timeline.rs       markers + takes + bounce status
-├── session.rs        channels + timeline + paths + recording
-├── channel.rs        channel metadata
-├── ui/               ratatui views
+├── template.rs       saved channel layouts
+├── settings.rs       app-wide paths (sessions/, bounces/, templates/)
+├── paths.rs          filesystem helpers
+├── ui/               ratatui views, panels, modals, input handling
 └── units.rs          newtypes
 ```
 
 Four threads:
 
 - **UI** — event loop, draws frames, mutates state
-- **Audio callback** — cpal-managed; pushes raw frames to a 10s rtrb
-- **Disk writer** — drains the rtrb into per-channel WAVs, flushes once
+- **Audio callback** — cpal-managed; pushes raw frames into a 10s rtrb
+- **Disk writer** — drains the rtrb into per-track WAVs, flushes once
   per second to keep the WAV header current
 - **Bounce worker** — receives jobs, waits for the take's end to be
-  durable on disk, then streams chunks through hound → sum → LAME
+  durable on disk, then streams chunks through hound → sum →
+  ebur128 (loudness measure) → LAME
 
 No locks on the audio thread. Cross-thread state is `AtomicU64` (sample
-position, flushed-samples), `AtomicF32` (per-channel peaks), and mpsc
-for control + bounce jobs.
+position, flushed-samples), an rtrb of `LevelObservation` for per-channel
+peaks, and mpsc for control + bounce jobs.
 
 ## Roadmap
 
 - Sample-indexed level history (waveform is currently tick-indexed)
 - Per-channel gain/pan applied during the bounce (currently a flat sum)
-- Configurable bounce parameters
-- Persistent per-device channel configuration
-- Save/load a recording session
+- Configurable bounce parameters (bitrate, LUFS target)
+- Load existing sessions from disk (write is shipped; read isn't)
+- Auto-recall last template per device
 
 ## Dependencies
 
@@ -106,8 +133,14 @@ for control + bounce jobs.
 [`hound`](https://crates.io/crates/hound),
 [`mp3lame-encoder`](https://crates.io/crates/mp3lame-encoder) (vendors
 LAME, statically linked, no system `libmp3lame` needed),
-[`atomic_float`](https://crates.io/crates/atomic_float),
-[`chrono`](https://crates.io/crates/chrono).
+[`ebur128`](https://crates.io/crates/ebur128) (LUFS / true-peak),
+[`clap`](https://crates.io/crates/clap),
+[`serde`](https://crates.io/crates/serde) +
+[`toml`](https://crates.io/crates/toml) (settings / session persistence),
+[`uuid`](https://crates.io/crates/uuid),
+[`palette`](https://crates.io/crates/palette),
+[`chrono`](https://crates.io/crates/chrono),
+[`rand`](https://crates.io/crates/rand).
 
 ## License
 
