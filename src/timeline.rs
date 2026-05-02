@@ -1,15 +1,17 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::units::SampleRate;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Marker {
     pub sample: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BounceStatus {
     Pending,
     Bouncing,
@@ -17,13 +19,14 @@ pub enum BounceStatus {
     Failed,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Take {
     pub id: Uuid,
     pub name: String,
     pub start_sample: u64,
     pub end_sample: u64,
     pub color_index: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounce_path: Option<PathBuf>,
     pub bounce_status: BounceStatus,
 }
@@ -31,9 +34,12 @@ pub struct Take {
 /// Marker/take structure laid down against a recording, in
 /// recording-relative samples. Owns the sample rate and answers all
 /// time-domain questions about the session's events.
+#[derive(Serialize, Deserialize)]
 pub struct Timeline {
     sample_rate: SampleRate,
+    #[serde(rename = "marker", default)]
     markers: Vec<Marker>,
+    #[serde(rename = "take", default)]
     takes: Vec<Take>,
 }
 

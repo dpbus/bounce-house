@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::bounce::BounceEvent;
@@ -13,14 +14,21 @@ use crate::units::SampleRate;
 
 const CHANNELS_DIR: &str = "channels";
 
+#[derive(Serialize, Deserialize)]
 pub struct Session {
     pub name: String,
+    #[serde(skip)]
     pub bounces_dir: PathBuf,
+    #[serde(skip)]
     pub bounces_filename_prefix: Option<String>,
-    channels: Vec<Channel>,
-    end_sample: Option<u64>,
+    #[serde(skip)]
     dir: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    end_sample: Option<u64>,
+    #[serde(flatten)]
     timeline: Timeline,
+    #[serde(rename = "channel", default)]
+    channels: Vec<Channel>,
 }
 
 impl Session {
@@ -84,16 +92,22 @@ impl Session {
 
     pub fn drop_marker(&mut self, sample: u64) {
         self.timeline.mark(sample);
+        self.persist();
     }
 
     pub fn delete_last_marker(&mut self) -> bool {
-        self.timeline.delete_last_marker()
+        let deleted = self.timeline.delete_last_marker();
+        if deleted {
+            self.persist();
+        }
+        deleted
     }
 
     pub fn create_take(&mut self, name: String) -> Option<Take> {
         if !self.timeline.create_take(name) {
             return None;
         }
+        self.persist();
         self.timeline.takes().last().cloned()
     }
 
@@ -112,6 +126,7 @@ impl Session {
                     .set_bounce_status(take_id, BounceStatus::Failed);
             }
         }
+        self.persist();
     }
 
     pub fn start_recording(&mut self, armed_channels: &[LiveChannel]) -> Option<Vec<Channel>> {
@@ -129,6 +144,7 @@ impl Session {
         self.channels = channels.clone();
         self.end_sample = None;
         self.timeline.mark(0);
+        self.persist();
         Some(channels)
     }
 
@@ -137,6 +153,22 @@ impl Session {
             self.end_sample = Some(end_sample);
         }
         self.timeline.mark(end_sample);
+        self.persist();
+    }
+
+    fn persist(&self) {
+        if !self.dir.exists() {
+            return;
+        }
+        let toml = match toml::to_string_pretty(self) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let final_path = self.dir.join("session.toml");
+        let tmp = self.dir.join("session.toml.tmp");
+        if std::fs::write(&tmp, &toml).is_ok() {
+            let _ = std::fs::rename(&tmp, &final_path);
+        }
     }
 }
 
@@ -342,5 +374,93 @@ mod tests {
             Session::channel_subpath(&live(0, Some("Kick"), true)),
             std::path::PathBuf::from("channels/ch00-Kick.wav")
         );
+    }
+
+    fn read_session_toml(session: &Session) -> String {
+        std::fs::read_to_string(session.dir().join("session.toml")).expect("read session.toml")
+    }
+
+    fn populated_session_in(dir: &std::path::Path) -> Session {
+        let settings = settings_in(dir);
+        let mut session = Session::new(SampleRate(48_000), &settings);
+        std::fs::create_dir_all(session.dir()).expect("create session dir");
+        let armed = vec![live(0, Some("Kick"), true)];
+        session.start_recording(&armed).expect("non-empty");
+        session
+    }
+
+    #[test]
+    fn persist_no_op_when_dir_missing() {
+        // Pre-recording state: dir doesn't exist yet, persist must not panic.
+        let dir = tempdir().unwrap();
+        let settings = settings_in(dir.path());
+        let mut session = Session::new(SampleRate(48_000), &settings);
+        // Trigger a path that calls persist (no dir yet).
+        session.stop_recording(0);
+        assert!(!session.dir().join("session.toml").exists());
+    }
+
+    #[test]
+    fn persist_roundtrips_through_toml() {
+        let dir = tempdir().unwrap();
+        let mut session = populated_session_in(dir.path());
+        session.drop_marker(48_000);
+        session
+            .create_take("Verse".to_string())
+            .expect("take created");
+        session.stop_recording(96_000);
+
+        let toml_text = read_session_toml(&session);
+        let parsed: Session = toml::from_str(&toml_text).expect("roundtrip");
+
+        assert_eq!(parsed.name, session.name);
+        assert_eq!(parsed.end_sample(), session.end_sample());
+        assert_eq!(parsed.sample_rate(), session.sample_rate());
+        assert_eq!(parsed.channels().len(), 1);
+        assert_eq!(parsed.channels()[0].label.as_deref(), Some("Kick"));
+        assert_eq!(parsed.timeline().markers().len(), 3);
+        assert_eq!(parsed.timeline().takes().len(), 1);
+        assert_eq!(parsed.timeline().takes()[0].name, "Verse");
+    }
+
+    #[test]
+    fn persist_writes_after_each_mutation() {
+        // Drift protection: every public mutation that affects persisted
+        // state must rewrite session.toml. New mutations need to be
+        // added here or this test fails. We delete the file before each
+        // call to prove the call itself recreates it (rather than
+        // comparing content, which can revert across mutation pairs).
+        let dir = tempdir().unwrap();
+        let mut session = populated_session_in(dir.path());
+        let toml = session.dir().join("session.toml");
+        assert!(toml.exists(), "start_recording should write");
+
+        std::fs::remove_file(&toml).unwrap();
+        session.drop_marker(48_000);
+        assert!(toml.exists(), "drop_marker should write");
+
+        std::fs::remove_file(&toml).unwrap();
+        session.create_take("Verse".into()).expect("take");
+        assert!(toml.exists(), "create_take should write");
+
+        let take_id = session.timeline().takes()[0].id;
+
+        std::fs::remove_file(&toml).unwrap();
+        session.apply_bounce_event(take_id, BounceEvent::Started);
+        assert!(toml.exists(), "apply_bounce_event(Started) should write");
+
+        std::fs::remove_file(&toml).unwrap();
+        session.apply_bounce_event(take_id, BounceEvent::Done(PathBuf::from("/tmp/v.mp3")));
+        assert!(toml.exists(), "apply_bounce_event(Done) should write");
+
+        // Need an unbound marker before delete_last_marker can act.
+        session.drop_marker(72_000);
+        std::fs::remove_file(&toml).unwrap();
+        session.delete_last_marker();
+        assert!(toml.exists(), "delete_last_marker should write");
+
+        std::fs::remove_file(&toml).unwrap();
+        session.stop_recording(96_000);
+        assert!(toml.exists(), "stop_recording should write");
     }
 }
