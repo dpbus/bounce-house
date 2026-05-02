@@ -155,8 +155,8 @@ impl ChannelPickerModal {
             } else {
                 None
             };
-            let level = app.display_levels[channel.index as usize];
-            let peak = app.peak_holds[channel.index as usize];
+            let level = app.meters.display_levels()[channel.index as usize];
+            let peak = app.meters.peak_holds()[channel.index as usize];
             items.push(ListItem::new(channel_row(
                 channel,
                 level,

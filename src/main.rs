@@ -3,6 +3,8 @@ mod audio;
 mod bounce;
 mod capture;
 mod channel;
+mod level_history;
+mod meters;
 mod paths;
 mod session;
 mod settings;

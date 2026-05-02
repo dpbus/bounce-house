@@ -84,8 +84,8 @@ fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App) {
     let chunks = strip_chunks(area);
     let i = channel.index as usize;
 
-    let level = app.display_levels[i];
-    let peak = app.peak_holds[i];
+    let level = app.meters.display_levels()[i];
+    let peak = app.meters.peak_holds()[i];
     let lines = vertical_meter(
         level,
         Some(peak),

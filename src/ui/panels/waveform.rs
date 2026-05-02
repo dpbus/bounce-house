@@ -5,14 +5,15 @@ use ratatui::symbols::Marker;
 use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 use ratatui::widgets::{Block, Borders};
 
-use crate::app::{App, LevelSample};
+use crate::app::App;
+use crate::level_history::LevelSample;
 use crate::ui::widgets::{
     BAND_GREEN, BAND_GREEN_DIM, BAND_RED, BAND_RED_DIM, BAND_YELLOW, BAND_YELLOW_DIM,
     band_thresholds, linear_to_db_fraction, take_color,
 };
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let label = match app.waveform_window_secs {
+    let label = match app.level_history.window_secs() {
         s if s < 60 => format!("{}s", s),
         s if s < 3600 => format!("{} min", s / 60),
         s => format!("{} hr", s / 3600),
@@ -44,12 +45,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let height = canvas_area.height as usize;
 
     let layout = WaveformLayout::new(
-        app.waveform_window_secs,
+        app.level_history.window_secs(),
         cols,
         app.audio_input.sample_rate().0 as u64,
         app.audio_input.sample_position(),
     );
-    let amps = waveform_amps(&app.level_history, &layout);
+    let amps = waveform_amps(app.level_history.samples(), &layout);
     let marker_columns: Vec<(Option<u8>, usize)> = app
         .session
         .timeline()

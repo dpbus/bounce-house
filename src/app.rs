@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::collections::VecDeque;
 use std::io;
 
 use chrono::{DateTime, Local};
@@ -8,18 +7,11 @@ use crate::audio::{AudioInput, Device, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::{Capture, CaptureError};
 use crate::channel::Channel;
+use crate::level_history::LevelHistory;
+use crate::meters::Meters;
 use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
-
-const FAST_DECAY: f32 = 0.976;
-const SLOW_DECAY: f32 = 0.990;
-
-pub const WAVEFORM_WINDOWS_SECS: &[u64] = &[10, 30, 60, 300, 1800];
-
-const MAX_HISTORY_SECS: usize = 1800;
-/// Initial allocation only. Runtime growth is bounded by sample-threshold eviction.
-const LEVEL_HISTORY_CAPACITY_HINT: usize = MAX_HISTORY_SECS * 100;
 
 pub struct App {
     pub settings: Settings,
@@ -29,17 +21,11 @@ pub struct App {
     pub bounce_pool: BouncePool,
     pub runtime_mode: RuntimeMode,
     pub channels: Vec<Channel>,
-    pub display_levels: Vec<f32>,
-    pub peak_holds: Vec<f32>,
-    pub level_history: VecDeque<LevelSample>,
+    pub meters: Meters,
+    pub level_history: LevelHistory,
     pub total_ticks: u64,
-    pub waveform_window_secs: u64,
     /// App-launch time, for the "Session HH:MM:SS" header timer.
     pub started_at: DateTime<Local>,
-    /// Per-channel max peak observed across the level observations
-    /// drained this tick — fed into the meter decay. Reused as a
-    /// scratch buffer so the 60Hz tick path doesn't allocate.
-    tick_peaks: Vec<f32>,
     /// Leftmost visible channel in the strip panel. Bounded by the
     /// strips panel based on its width — see `last_strip_capacity`.
     pub channel_viewport_offset: usize,
@@ -85,14 +71,6 @@ pub enum RecordingState {
     Paused,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct LevelSample {
-    /// Absolute audio-input sample at the moment the entry was captured.
-    pub sample: u64,
-    pub peak: f32,
-    pub recorded: bool,
-}
-
 #[derive(Debug)]
 pub enum AppError {
     NothingArmed,
@@ -121,13 +99,10 @@ impl App {
             bounce_pool: BouncePool::start(),
             runtime_mode: RuntimeMode::Idle,
             channels,
-            display_levels: vec![0.0; n],
-            peak_holds: vec![0.0; n],
-            level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
+            meters: Meters::new(n),
+            level_history: LevelHistory::new(),
             total_ticks: 0,
-            waveform_window_secs: WAVEFORM_WINDOWS_SECS[0],
             started_at: Local::now(),
-            tick_peaks: vec![0.0; n],
             channel_viewport_offset: 0,
             last_strip_capacity: Cell::new(0),
         }
@@ -193,7 +168,10 @@ impl App {
         self.total_ticks += 1;
         self.apply_bounce_events();
         self.drain_level_observations();
-        self.evict_old_level_history();
+        self.level_history.evict_old(
+            self.audio_input.sample_position(),
+            self.audio_input.sample_rate().0 as u64,
+        );
     }
 
     fn apply_bounce_events(&mut self) {
@@ -204,56 +182,18 @@ impl App {
         }
     }
 
-    /// Drains observations into both meter decay state and waveform history.
     fn drain_level_observations(&mut self) {
-        let n_channels = self.channels.len();
-        if self.tick_peaks.len() < n_channels {
-            self.tick_peaks.resize(n_channels, 0.0);
-        }
-        self.tick_peaks[..n_channels].fill(0.0);
         let recorded = self.runtime_mode.capture().is_some_and(|c| !c.is_paused());
         while let Ok(obs) = self.levels_consumer.pop() {
-            let mut combined = 0.0f32;
-            for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
-                self.tick_peaks[i] = self.tick_peaks[i].max(peak);
-                if self.channels[i].armed {
-                    combined = combined.max(peak);
-                }
-            }
-            self.level_history.push_back(LevelSample {
-                sample: obs.sample,
-                peak: combined,
-                recorded,
-            });
+            self.meters.observe(&obs);
+            let combined = combined_armed_peak(&obs.channel_peaks, &self.channels);
+            self.level_history.push(obs.sample, combined, recorded);
         }
-        for i in 0..n_channels {
-            let peak = self.tick_peaks[i];
-            self.display_levels[i] = peak.max(self.display_levels[i] * FAST_DECAY);
-            self.peak_holds[i] = peak.max(self.peak_holds[i] * SLOW_DECAY);
-        }
-    }
-
-    fn evict_old_level_history(&mut self) {
-        let sample_rate = self.audio_input.sample_rate().0 as u64;
-        let cutoff = self
-            .audio_input
-            .sample_position()
-            .saturating_sub(MAX_HISTORY_SECS as u64 * sample_rate);
-        while self
-            .level_history
-            .front()
-            .is_some_and(|e| e.sample < cutoff)
-        {
-            self.level_history.pop_front();
-        }
+        self.meters.decay();
     }
 
     pub fn cycle_waveform_window(&mut self) {
-        let idx = WAVEFORM_WINDOWS_SECS
-            .iter()
-            .position(|&v| v == self.waveform_window_secs)
-            .unwrap_or(0);
-        self.waveform_window_secs = WAVEFORM_WINDOWS_SECS[(idx + 1) % WAVEFORM_WINDOWS_SECS.len()];
+        self.level_history.cycle_window();
     }
 
     pub fn start_recording(&mut self) -> Result<(), AppError> {
@@ -356,4 +296,13 @@ impl App {
             channel.label = label;
         }
     }
+}
+
+fn combined_armed_peak(peaks: &[f32], channels: &[Channel]) -> f32 {
+    channels
+        .iter()
+        .zip(peaks)
+        .filter(|(c, _)| c.armed)
+        .map(|(_, &p)| p)
+        .fold(0.0_f32, f32::max)
 }
