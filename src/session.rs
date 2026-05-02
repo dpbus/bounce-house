@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::bounce::BounceEvent;
 use crate::channel::Channel;
 use crate::paths;
-use crate::recording::{RecordedChannel, Recording};
+use crate::recording::RecordedChannel;
 use crate::settings::Settings;
 use crate::timeline::{BounceStatus, Take, Timeline};
 use crate::units::SampleRate;
@@ -30,7 +30,13 @@ pub struct Session {
     /// prepended to each filename for a flat layout.
     pub bounces_dir: PathBuf,
     pub bounces_filename_prefix: Option<String>,
-    pub recording: Option<Recording>,
+    /// Snapshot of armed channels at record-start time. Empty until
+    /// recording has started; non-empty thereafter for the life of the
+    /// session.
+    recorded_channels: Vec<RecordedChannel>,
+    /// Stamped when recording stops. None means "never recorded" (when
+    /// `recorded_channels` is empty) or "recording in progress."
+    end_sample: Option<u64>,
     /// Session root on disk (settings.sessions_dir / name). Created
     /// lazily when recording first starts.
     dir: PathBuf,
@@ -64,7 +70,8 @@ impl Session {
             bounces_filename_prefix: None,
             channels,
             timeline: Timeline::new(sample_rate),
-            recording: None,
+            recorded_channels: Vec::new(),
+            end_sample: None,
         }
     }
 
@@ -88,13 +95,28 @@ impl Session {
         &self.dir
     }
 
-    /// Absolute paths to the recording's channel WAV files, in order.
-    /// Empty if no recording exists.
+    pub fn recorded_channels(&self) -> &[RecordedChannel] {
+        &self.recorded_channels
+    }
+
+    pub fn end_sample(&self) -> Option<u64> {
+        self.end_sample
+    }
+
+    /// True once recording has started — `start_recording` populates
+    /// `recorded_channels`, and the snapshot persists for the rest of
+    /// the session's life.
+    pub fn has_recording(&self) -> bool {
+        !self.recorded_channels.is_empty()
+    }
+
+    /// Absolute paths to the recorded channel WAV files, in order.
+    /// Empty if recording hasn't started.
     pub fn recording_channel_paths(&self) -> Vec<PathBuf> {
-        self.recording
-            .as_ref()
-            .map(|r| r.channels.iter().map(|c| self.dir.join(&c.file)).collect())
-            .unwrap_or_default()
+        self.recorded_channels
+            .iter()
+            .map(|c| self.dir.join(&c.file))
+            .collect()
     }
 
     /// Path relative to `self.dir` — the form stored on `Recording`.
@@ -158,8 +180,8 @@ impl Session {
         }
     }
 
-    /// Snapshots the currently armed channels into a Recording. Returns
-    /// the snapshot, or None if nothing's armed (no Recording is created).
+    /// Snapshots the currently armed channels onto the session.
+    /// Returns the snapshot, or None if nothing's armed.
     pub fn start_recording(&mut self) -> Option<Vec<RecordedChannel>> {
         let channels: Vec<RecordedChannel> = self
             .armed_channels()
@@ -172,17 +194,15 @@ impl Session {
         if channels.is_empty() {
             return None;
         }
-        self.recording = Some(Recording {
-            channels: channels.clone(),
-            end_sample: None,
-        });
+        self.recorded_channels = channels.clone();
+        self.end_sample = None;
         self.timeline.mark(0);
         Some(channels)
     }
 
     pub fn stop_recording(&mut self, end_sample: u64) {
-        if let Some(rec) = &mut self.recording {
-            rec.end_sample = Some(end_sample);
+        if self.has_recording() {
+            self.end_sample = Some(end_sample);
         }
         self.timeline.mark(end_sample);
     }
@@ -243,7 +263,8 @@ mod tests {
     fn new_starts_with_no_recording_and_empty_timeline() {
         let dir = tempdir().unwrap();
         let session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
-        assert!(session.recording.is_none());
+        assert!(!session.has_recording());
+        assert!(session.end_sample().is_none());
         assert!(session.timeline.markers().is_empty());
         assert!(session.timeline.takes().is_empty());
         assert!(session.bounces_filename_prefix.is_none());
@@ -309,9 +330,9 @@ mod tests {
         assert_eq!(recorded[0].label.as_deref(), Some("Kick"));
         assert_eq!(recorded[0].file, PathBuf::from("channels/ch00-Kick.wav"));
 
-        let rec = session.recording.as_ref().expect("recording set");
-        assert_eq!(rec.channels.len(), 1);
-        assert!(rec.end_sample.is_none());
+        assert!(session.has_recording());
+        assert_eq!(session.recorded_channels().len(), 1);
+        assert!(session.end_sample().is_none());
 
         let markers: Vec<u64> = session
             .timeline
@@ -327,7 +348,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let mut session = Session::new(2, SampleRate(48_000), &settings_in(dir.path()));
         assert!(session.start_recording().is_none());
-        assert!(session.recording.is_none());
+        assert!(!session.has_recording());
         assert!(session.timeline.markers().is_empty());
     }
 
@@ -340,8 +361,7 @@ mod tests {
 
         session.stop_recording(96_000);
 
-        let rec = session.recording.as_ref().expect("recording set");
-        assert_eq!(rec.end_sample, Some(96_000));
+        assert_eq!(session.end_sample(), Some(96_000));
 
         let markers: Vec<u64> = session
             .timeline
@@ -358,7 +378,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let mut session = Session::new(1, SampleRate(48_000), &settings_in(dir.path()));
         session.stop_recording(48_000);
-        assert!(session.recording.is_none());
+        assert!(!session.has_recording());
+        assert!(session.end_sample().is_none());
         let markers: Vec<u64> = session
             .timeline
             .markers()
@@ -393,7 +414,8 @@ mod tests {
         original.stop_recording(48_000);
 
         let forked = original.fork_for_new_recording(&settings);
-        assert!(forked.recording.is_none());
+        assert!(!forked.has_recording());
+        assert!(forked.end_sample().is_none());
         assert!(forked.timeline.markers().is_empty());
         assert!(forked.timeline.takes().is_empty());
     }

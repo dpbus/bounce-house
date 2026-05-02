@@ -143,13 +143,12 @@ impl App {
     }
 
     pub fn recording_duration_secs(&self) -> Option<u64> {
-        let recording = self.session.recording.as_ref()?;
         let sr = (self.session.sample_rate().0 as u64).max(1);
         let samples = self
             .capture
             .as_ref()
             .map(|c| c.rel_sample_position())
-            .or(recording.end_sample)?;
+            .or(self.session.end_sample())?;
         Some(samples / sr)
     }
 
@@ -228,7 +227,7 @@ impl App {
         // earlier), fork a fresh session so the new capture gets its
         // own dir and timeline. Channels carry over; previous WAVs and
         // bounces stay where they are on disk.
-        if self.session.recording.is_some() {
+        if self.session.has_recording() {
             self.session = self.session.fork_for_new_recording(&self.settings);
         }
         let capture = Capture::start(&self.engine, &mut self.session)?;

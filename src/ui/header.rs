@@ -49,9 +49,8 @@ fn session_duration_spans(app: &App) -> Vec<Span<'static>> {
 
 fn recording_folder(app: &App) -> Option<String> {
     app.session
-        .recording
-        .as_ref()
-        .map(|_| app.session.name.clone())
+        .has_recording()
+        .then(|| app.session.name.clone())
 }
 
 fn flash_line(view: &View) -> Option<Line<'static>> {

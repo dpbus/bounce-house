@@ -67,7 +67,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let inner = panel(frame, area, "Timeline", None, naming_hint(view));
 
     let session = &app.session;
-    if session.recording.is_none() {
+    if !session.has_recording() {
         frame.render_widget(Paragraph::new(dim_status("No recording")), inner);
         return;
     }
