@@ -105,7 +105,7 @@ impl App {
     }
 
     pub fn scroll_strips_right(&mut self, n: usize) {
-        let visible = self.session.channels().iter().filter(|c| !c.hidden).count();
+        let visible = self.session.channels().iter().filter(|c| c.armed).count();
         let cap = self.last_strip_capacity.get().max(1);
         let max = visible.saturating_sub(cap);
         self.channel_viewport_offset = (self.channel_viewport_offset + n).min(max);
@@ -306,8 +306,6 @@ impl App {
                 .set_channel_label(tmpl_channel.index, tmpl_channel.label.clone());
             self.session
                 .set_channel_armed(tmpl_channel.index, tmpl_channel.armed);
-            self.session
-                .set_channel_hidden(tmpl_channel.index, tmpl_channel.hidden);
         }
     }
 
@@ -320,9 +318,5 @@ impl App {
 
     pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
         self.session.set_channel_label(channel_index, label);
-    }
-
-    pub fn toggle_hidden(&mut self, channel_index: u16) {
-        self.session.toggle_channel_hidden(channel_index);
     }
 }

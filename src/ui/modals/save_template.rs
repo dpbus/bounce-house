@@ -116,10 +116,9 @@ fn pick_layout(n_channels: u16) -> ContentLayout {
 fn header_lines(app: &App) -> Vec<Line<'static>> {
     let total = app.engine.channel_count() as usize;
     let armed = app.session.armed_channels().count();
-    let hidden = app.session.channels().iter().filter(|c| c.hidden).count();
     vec![
         labeled("Device:    ", app.engine.device_name().to_string()),
-        labeled("Channels:  ", channels_summary(armed, hidden, total)),
+        labeled("Channels:  ", channels_summary(armed, total)),
     ]
 }
 

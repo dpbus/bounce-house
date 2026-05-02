@@ -126,12 +126,11 @@ fn draw_preview(frame: &mut Frame, area: Rect, template: &Template) {
         .split(area);
 
     let armed = template.channels.iter().filter(|c| c.armed).count();
-    let hidden = template.channels.iter().filter(|c| c.hidden).count();
     let total = template.channels.len();
     let header = vec![
         labeled("Name:      ", template.name.clone()),
         labeled("Device:    ", template.device_name.clone()),
-        labeled("Channels:  ", channels_summary(armed, hidden, total)),
+        labeled("Channels:  ", channels_summary(armed, total)),
     ];
     frame.render_widget(Paragraph::new(header), chunks[0]);
 

@@ -7,8 +7,6 @@ pub struct Channel {
     pub label: Option<String>,
     #[serde(default)]
     pub armed: bool,
-    #[serde(default)]
-    pub hidden: bool,
 }
 
 impl Channel {
@@ -17,7 +15,6 @@ impl Channel {
             index,
             label: None,
             armed: false,
-            hidden: false,
         }
     }
 }
@@ -39,7 +36,6 @@ mod tests {
         let mut ch = Channel::new(3);
         ch.label = Some("Vocals".into());
         ch.armed = true;
-        ch.hidden = true;
 
         let toml_str = toml::to_string(&ch).expect("serialize");
         let parsed: Channel = toml::from_str(&toml_str).expect("deserialize");
@@ -47,7 +43,6 @@ mod tests {
         assert_eq!(parsed.index, 3);
         assert_eq!(parsed.label.as_deref(), Some("Vocals"));
         assert!(parsed.armed);
-        assert!(parsed.hidden);
     }
 
     #[test]
@@ -59,12 +54,11 @@ mod tests {
 
     #[test]
     fn serde_handles_missing_optional_fields() {
-        // Older config files may omit `armed` and `hidden`. Should default to false.
+        // Older config files may omit `armed`. Should default to false.
         let toml_str = "index = 2";
         let parsed: Channel = toml::from_str(toml_str).expect("deserialize");
         assert_eq!(parsed.index, 2);
         assert!(!parsed.armed);
-        assert!(!parsed.hidden);
         assert!(parsed.label.is_none());
     }
 }

@@ -9,13 +9,7 @@ const STRIP_WIDTH: u16 = 14;
 const METER_WIDTH: usize = 3;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let channels: Vec<&Channel> = app
-        .session
-        .channels()
-        .iter()
-        .filter(|c| !c.hidden)
-        .collect();
-    let armed_count = channels.iter().filter(|c| c.armed).count();
+    let channels: Vec<&Channel> = app.session.channels().iter().filter(|c| c.armed).collect();
     let total = app.engine.channel_count();
 
     let block = Block::default()
@@ -46,7 +40,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let off_left = offset;
     let off_right = channels.len().saturating_sub(end);
 
-    let title = format!(" Channels — {}/{} armed ", armed_count, total);
+    let title = format!(" Channels — {}/{} armed ", channels.len(), total);
     frame.render_widget(block.title(title).title(title_hint()), area);
 
     if off_left > 0 {

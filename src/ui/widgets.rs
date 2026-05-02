@@ -333,52 +333,30 @@ pub fn labeled(label: &'static str, value: String) -> Line<'static> {
     ])
 }
 
-/// Read-only row for displaying a channel in template previews. Armed
-/// channels show a red filled circle; unarmed channels render dim with
-/// an empty circle. (The interactive picker has its own row variant.)
-pub fn channels_summary(armed: usize, hidden: usize, total: usize) -> String {
-    if hidden > 0 {
-        format!("{armed} armed, {hidden} hidden / {total}")
-    } else {
-        format!("{armed} armed / {total}")
-    }
+pub fn channels_summary(armed: usize, total: usize) -> String {
+    format!("{armed} armed / {total}")
 }
 
-/// Bracket-style channel marker: square brackets for visible, parens
-/// for hidden; filled disc for armed, blank for unarmed.
+/// Bracket-style channel marker: filled disc for armed, blank for unarmed.
 pub fn channel_marker(channel: &Channel) -> &'static str {
-    match (channel.hidden, channel.armed) {
-        (false, true) => "[●]",
-        (false, false) => "[ ]",
-        (true, true) => "(●)",
-        (true, false) => "( )",
-    }
+    if channel.armed { "[●]" } else { "[ ]" }
 }
 
-/// Style for `channel_marker`: red when armed, dark gray otherwise;
-/// DIM-modified when hidden.
+/// Style for `channel_marker`: red when armed, dark gray otherwise.
 pub fn channel_marker_style(channel: &Channel) -> Style {
-    let base = if channel.armed {
+    if channel.armed {
         Style::default().fg(Color::Red)
     } else {
         Style::default().fg(Color::DarkGray)
-    };
-    if channel.hidden {
-        base.add_modifier(Modifier::DIM)
-    } else {
-        base
     }
 }
 
 pub fn channel_preview_row(channel: &Channel) -> Line<'static> {
-    let mut row_style = if channel.armed {
+    let row_style = if channel.armed {
         Style::default()
     } else {
         Style::default().fg(Color::DarkGray)
     };
-    if channel.hidden {
-        row_style = row_style.add_modifier(Modifier::DIM);
-    }
     let label = channel.label.clone().unwrap_or_else(|| "—".to_string());
     Line::from(vec![
         Span::styled(channel_marker(channel), channel_marker_style(channel)),
