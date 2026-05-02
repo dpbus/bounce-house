@@ -221,14 +221,14 @@ fn dim_buffer(frame: &mut Frame) {
 fn outer_block(app: &App) -> Block<'static> {
     let (title, color) = match app.recording_state() {
         RecordingState::Recording => (
-            format!(" ● Recording — {} ", app.engine.device_name()),
+            format!(" ● Recording — {} ", app.audio_input.device_name()),
             Color::Red,
         ),
         RecordingState::Paused => (
-            format!(" ⏸ Paused — {} ", app.engine.device_name()),
+            format!(" ⏸ Paused — {} ", app.audio_input.device_name()),
             Color::Yellow,
         ),
-        RecordingState::Idle => (format!(" {} ", app.engine.device_name()), Color::Cyan),
+        RecordingState::Idle => (format!(" {} ", app.audio_input.device_name()), Color::Cyan),
     };
     Block::default()
         .title(title)

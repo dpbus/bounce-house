@@ -46,8 +46,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let layout = WaveformLayout::new(
         app.waveform_window_secs,
         cols,
-        app.engine.sample_rate().0 as u64,
-        app.engine.sample_position(),
+        app.audio_input.sample_rate().0 as u64,
+        app.audio_input.sample_position(),
     );
     let amps = waveform_amps(&app.level_history, &layout);
     let marker_columns: Vec<(Option<u8>, usize)> = app

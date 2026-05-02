@@ -109,10 +109,10 @@ fn pick_layout(n_channels: u16) -> ContentLayout {
 }
 
 fn header_lines(app: &App) -> Vec<Line<'static>> {
-    let total = app.engine.channel_count() as usize;
+    let total = app.audio_input.channel_count() as usize;
     let armed = app.armed_channels().count();
     vec![
-        labeled("Device:    ", app.engine.device_name().to_string()),
+        labeled("Device:    ", app.audio_input.device_name().to_string()),
         labeled("Channels:  ", channels_summary(armed, total)),
     ]
 }

@@ -13,9 +13,10 @@ pub const RECORDING_BUFFER_SECONDS: usize = 10;
 /// ~10s of headroom at typical macOS callback rates (~93 Hz).
 const LEVEL_BUFFER_CAPACITY: usize = 1000;
 
-/// UI-side handle. Owns the cpal stream, shares atomic state with the
-/// audio thread, and sends control commands.
-pub struct EngineHandle {
+/// UI-side handle for the audio input device. Owns the cpal input
+/// stream, shares atomic state with the audio thread, and sends
+/// control commands.
+pub struct AudioInput {
     _stream: cpal::Stream,
     device: Device,
     sample_position: Arc<AtomicU64>,
@@ -40,7 +41,7 @@ struct Engine {
     paused: bool,
 }
 
-impl EngineHandle {
+impl AudioInput {
     pub fn start(device: Device) -> (Self, rtrb::Consumer<LevelObservation>) {
         let total_channel_count = device.channel_count() as usize;
         assert!(
@@ -71,7 +72,7 @@ impl EngineHandle {
 
         stream.play().expect("Failed to start audio stream");
 
-        let handle = EngineHandle {
+        let handle = AudioInput {
             _stream: stream,
             device,
             sample_position,

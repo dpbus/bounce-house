@@ -10,7 +10,7 @@ const METER_WIDTH: usize = 3;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let channels: Vec<&Channel> = app.channels.iter().filter(|c| c.armed).collect();
-    let total = app.engine.channel_count();
+    let total = app.audio_input.channel_count();
 
     let block = Block::default()
         .borders(Borders::ALL)

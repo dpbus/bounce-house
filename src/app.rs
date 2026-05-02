@@ -4,7 +4,7 @@ use std::io;
 
 use chrono::{DateTime, Local};
 
-use crate::audio::{Device, EngineHandle, LevelObservation};
+use crate::audio::{AudioInput, Device, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::{Capture, CaptureError};
 use crate::channel::Channel;
@@ -24,7 +24,7 @@ const LEVEL_HISTORY_CAPACITY_HINT: usize = MAX_HISTORY_SECS * 100;
 pub struct App {
     pub settings: Settings,
     pub session: Session,
-    pub engine: EngineHandle,
+    pub audio_input: AudioInput,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub bounce_pool: BouncePool,
     pub capture: Option<Capture>,
@@ -58,7 +58,7 @@ pub enum RecordingState {
 
 #[derive(Clone, Copy, Debug)]
 pub struct LevelSample {
-    /// Absolute engine sample at the moment the entry was captured.
+    /// Absolute audio-input sample at the moment the entry was captured.
     pub sample: u64,
     pub peak: f32,
     pub recorded: bool,
@@ -80,14 +80,14 @@ impl From<CaptureError> for AppError {
 
 impl App {
     pub fn new(device: Device, settings: Settings) -> Self {
-        let (engine, levels_consumer) = EngineHandle::start(device);
-        let n = engine.channel_count() as usize;
-        let channels = (0..engine.channel_count()).map(Channel::new).collect();
-        let session = Session::new(engine.sample_rate(), &settings);
+        let (audio_input, levels_consumer) = AudioInput::start(device);
+        let n = audio_input.channel_count() as usize;
+        let channels = (0..audio_input.channel_count()).map(Channel::new).collect();
+        let session = Session::new(audio_input.sample_rate(), &settings);
         App {
             settings,
             session,
-            engine,
+            audio_input,
             levels_consumer,
             bounce_pool: BouncePool::start(),
             capture: None,
@@ -136,9 +136,9 @@ impl App {
             return;
         };
         if capture.is_paused() {
-            capture.resume(&self.engine);
+            capture.resume(&self.audio_input);
         } else {
-            capture.pause(&self.engine);
+            capture.pause(&self.audio_input);
         }
     }
 
@@ -205,9 +205,9 @@ impl App {
     }
 
     fn evict_old_level_history(&mut self) {
-        let sample_rate = self.engine.sample_rate().0 as u64;
+        let sample_rate = self.audio_input.sample_rate().0 as u64;
         let cutoff = self
-            .engine
+            .audio_input
             .sample_position()
             .saturating_sub(MAX_HISTORY_SECS as u64 * sample_rate);
         while self
@@ -235,14 +235,14 @@ impl App {
             self.session = self.session.fork_for_new_recording(&self.settings);
         }
         let armed_channels: Vec<Channel> = self.armed_channels().cloned().collect();
-        let capture = Capture::start(&self.engine, &mut self.session, &armed_channels)?;
+        let capture = Capture::start(&self.audio_input, &mut self.session, &armed_channels)?;
         self.capture = Some(capture);
         Ok(())
     }
 
     pub fn stop_recording(&mut self) {
         if let Some(capture) = self.capture.take() {
-            capture.stop(&self.engine, &mut self.session);
+            capture.stop(&self.audio_input, &mut self.session);
         }
     }
 
@@ -289,7 +289,7 @@ impl App {
         let path = template::path_for_name(&self.settings.templates_dir, name);
         let template = Template {
             name: name.to_string(),
-            device_name: self.engine.device_name().to_string(),
+            device_name: self.audio_input.device_name().to_string(),
             channels: self.channels.clone(),
         };
         template.save(&path)

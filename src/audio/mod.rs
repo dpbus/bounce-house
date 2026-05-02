@@ -1,13 +1,13 @@
 mod device;
 mod disk_writer;
-mod engine;
 #[cfg(debug_assertions)]
 mod fake;
+mod input;
 mod levels;
 
 pub use device::Device;
 pub use disk_writer::{ChannelOutput, DiskWriter};
-pub use engine::EngineHandle;
+pub use input::AudioInput;
 pub use levels::LevelObservation;
 
 pub fn list_devices() -> Vec<Device> {
