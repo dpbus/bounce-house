@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::bounce::BounceEvent;
-use crate::live_channel::LiveChannel;
+use crate::channel::Channel;
 use crate::paths;
 use crate::settings::Settings;
 use crate::timeline::{BounceStatus, Take, Timeline};
@@ -79,7 +79,7 @@ impl Session {
         self.tracks.iter().map(|t| self.dir.join(&t.file)).collect()
     }
 
-    fn track_subpath(live: &LiveChannel) -> PathBuf {
+    fn track_subpath(live: &Channel) -> PathBuf {
         Path::new(TRACKS_DIR).join(track_filename(live))
     }
 
@@ -126,7 +126,7 @@ impl Session {
         self.persist();
     }
 
-    pub fn start_recording(&mut self, armed_channels: &[LiveChannel]) -> Option<Vec<Track>> {
+    pub fn start_recording(&mut self, armed_channels: &[Channel]) -> Option<Vec<Track>> {
         if armed_channels.is_empty() {
             return None;
         }
@@ -170,7 +170,7 @@ impl Session {
     }
 }
 
-fn track_filename(channel: &LiveChannel) -> String {
+fn track_filename(channel: &Channel) -> String {
     match channel.label.as_deref().map(str::trim) {
         Some(label) if !label.is_empty() => {
             format!("ch{:02}-{}.wav", channel.index, paths::filename_safe(label))
@@ -192,8 +192,8 @@ mod tests {
         }
     }
 
-    fn live(index: u16, label: Option<&str>, armed: bool) -> LiveChannel {
-        LiveChannel {
+    fn live(index: u16, label: Option<&str>, armed: bool) -> Channel {
+        Channel {
             index,
             label: label.map(String::from),
             armed,
@@ -270,8 +270,8 @@ mod tests {
     fn stop_recording_stamps_end_sample_and_drops_end_mark() {
         let dir = tempdir().unwrap();
         let mut session = Session::new(SampleRate(48_000), &settings_in(dir.path()));
-        let live_channels = vec![live(0, None, true)];
-        session.start_recording(&live_channels).expect("armed");
+        let armed = vec![live(0, None, true)];
+        session.start_recording(&armed).expect("armed");
 
         session.stop_recording(96_000);
 
@@ -317,8 +317,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let settings = settings_in(dir.path());
         let mut original = Session::new(SampleRate(48_000), &settings);
-        let live_channels = vec![live(0, None, true)];
-        original.start_recording(&live_channels).expect("armed");
+        let armed = vec![live(0, None, true)];
+        original.start_recording(&armed).expect("armed");
         original.stop_recording(48_000);
 
         let forked = original.fork_for_new_recording(&settings);

@@ -7,7 +7,7 @@ use chrono::{DateTime, Local};
 use crate::audio::{Device, EngineHandle, LevelObservation};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::{Capture, CaptureError};
-use crate::live_channel::LiveChannel;
+use crate::channel::Channel;
 use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
@@ -28,7 +28,7 @@ pub struct App {
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub bounce_pool: BouncePool,
     pub capture: Option<Capture>,
-    pub live_channels: Vec<LiveChannel>,
+    pub channels: Vec<Channel>,
     pub display_levels: Vec<f32>,
     pub peak_holds: Vec<f32>,
     pub level_history: VecDeque<LevelSample>,
@@ -82,7 +82,7 @@ impl App {
     pub fn new(device: Device, settings: Settings) -> Self {
         let (engine, levels_consumer) = EngineHandle::start(device);
         let n = engine.channel_count() as usize;
-        let live_channels = (0..engine.channel_count()).map(LiveChannel::new).collect();
+        let channels = (0..engine.channel_count()).map(Channel::new).collect();
         let session = Session::new(engine.sample_rate(), &settings);
         App {
             settings,
@@ -91,7 +91,7 @@ impl App {
             levels_consumer,
             bounce_pool: BouncePool::start(),
             capture: None,
-            live_channels,
+            channels,
             display_levels: vec![0.0; n],
             peak_holds: vec![0.0; n],
             level_history: VecDeque::with_capacity(LEVEL_HISTORY_CAPACITY_HINT),
@@ -104,8 +104,8 @@ impl App {
         }
     }
 
-    pub fn armed_channels(&self) -> impl Iterator<Item = &LiveChannel> + '_ {
-        self.live_channels.iter().filter(|c| c.armed)
+    pub fn armed_channels(&self) -> impl Iterator<Item = &Channel> + '_ {
+        self.channels.iter().filter(|c| c.armed)
     }
 
     pub fn scroll_strips_left(&mut self, n: usize) {
@@ -177,7 +177,7 @@ impl App {
 
     /// Drains observations into both meter decay state and waveform history.
     fn drain_level_observations(&mut self) {
-        let n_channels = self.live_channels.len();
+        let n_channels = self.channels.len();
         if self.tick_peaks.len() < n_channels {
             self.tick_peaks.resize(n_channels, 0.0);
         }
@@ -187,7 +187,7 @@ impl App {
             let mut combined = 0.0f32;
             for (i, &peak) in obs.channel_peaks.iter().take(n_channels).enumerate() {
                 self.tick_peaks[i] = self.tick_peaks[i].max(peak);
-                if self.live_channels[i].armed {
+                if self.channels[i].armed {
                     combined = combined.max(peak);
                 }
             }
@@ -234,7 +234,7 @@ impl App {
         if self.session.has_recording() {
             self.session = self.session.fork_for_new_recording(&self.settings);
         }
-        let armed_channels: Vec<LiveChannel> = self.armed_channels().cloned().collect();
+        let armed_channels: Vec<Channel> = self.armed_channels().cloned().collect();
         let capture = Capture::start(&self.engine, &mut self.session, &armed_channels)?;
         self.capture = Some(capture);
         Ok(())
@@ -290,7 +290,7 @@ impl App {
         let template = Template {
             name: name.to_string(),
             device_name: self.engine.device_name().to_string(),
-            channels: self.live_channels.clone(),
+            channels: self.channels.clone(),
         };
         template.save(&path)
     }
@@ -304,7 +304,7 @@ impl App {
     /// by the template keep their fresh defaults.
     pub fn load_template(&mut self, template: &Template) {
         for tmpl_channel in &template.channels {
-            if let Some(channel) = self.live_channels.get_mut(tmpl_channel.index as usize) {
+            if let Some(channel) = self.channels.get_mut(tmpl_channel.index as usize) {
                 channel.label = tmpl_channel.label.clone();
                 channel.armed = tmpl_channel.armed;
             }
@@ -315,13 +315,13 @@ impl App {
         if self.is_recording() {
             return;
         }
-        if let Some(channel) = self.live_channels.get_mut(channel_index as usize) {
+        if let Some(channel) = self.channels.get_mut(channel_index as usize) {
             channel.armed = !channel.armed;
         }
     }
 
     pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
-        if let Some(channel) = self.live_channels.get_mut(channel_index as usize) {
+        if let Some(channel) = self.channels.get_mut(channel_index as usize) {
             channel.label = label;
         }
     }

@@ -2,7 +2,7 @@ mod app;
 mod audio;
 mod bounce;
 mod capture;
-mod live_channel;
+mod channel;
 mod paths;
 mod session;
 mod settings;

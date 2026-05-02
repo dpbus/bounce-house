@@ -4,7 +4,7 @@ use palette::{FromColor, Oklch, Srgb};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
-use crate::live_channel::LiveChannel;
+use crate::channel::Channel;
 use crate::ui::text_input::TextInput;
 
 const MIN_DB: f32 = -45.0;
@@ -338,12 +338,12 @@ pub fn channels_summary(armed: usize, total: usize) -> String {
 }
 
 /// Bracket-style channel marker: filled disc for armed, blank for unarmed.
-pub fn channel_marker(channel: &LiveChannel) -> &'static str {
+pub fn channel_marker(channel: &Channel) -> &'static str {
     if channel.armed { "[●]" } else { "[ ]" }
 }
 
 /// Style for `channel_marker`: red when armed, dark gray otherwise.
-pub fn channel_marker_style(channel: &LiveChannel) -> Style {
+pub fn channel_marker_style(channel: &Channel) -> Style {
     if channel.armed {
         Style::default().fg(Color::Red)
     } else {
@@ -351,7 +351,7 @@ pub fn channel_marker_style(channel: &LiveChannel) -> Style {
     }
 }
 
-pub fn channel_preview_row(channel: &LiveChannel) -> Line<'static> {
+pub fn channel_preview_row(channel: &Channel) -> Line<'static> {
     let row_style = if channel.armed {
         Style::default()
     } else {
