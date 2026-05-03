@@ -131,8 +131,10 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
         KeyAction::OpenHelp => {
             view.open_modal(ActiveModal::Help(HelpModal::new()));
         }
-        KeyAction::ScrollStripsLeft => app.scroll_strips_left(1),
-        KeyAction::ScrollStripsRight => app.scroll_strips_right(1),
+        KeyAction::ScrollStripsLeft => view.channel_strips.scroll_left(1),
+        KeyAction::ScrollStripsRight => view
+            .channel_strips
+            .scroll_right(1, app.mixer.armed_channels().count()),
     }
 }
 

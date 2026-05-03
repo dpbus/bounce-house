@@ -88,7 +88,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     let (placed_events, overflow_boundary) = bump_into_rows(events, bottom_row, timeline, &layout);
 
     let mut grid: Vec<Line<'static>> = (0..panel_rows).map(|_| empty_row()).collect();
-    render_events(&mut grid, &placed_events, timeline, app.total_ticks);
+    render_events(&mut grid, &placed_events, timeline, view.total_ticks);
     fill_take_continuations(&mut grid, &placed_events, timeline, &layout);
     render_in_progress_segment(
         &mut grid,

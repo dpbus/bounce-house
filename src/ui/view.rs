@@ -6,6 +6,7 @@ use ratatui::widgets::{Block, Borders, Padding};
 use crate::app::App;
 use crate::dispatch::{Action, fire};
 use crate::transport::RecordingState;
+use crate::ui::ChannelStrips;
 use crate::ui::ModalOutcome;
 use crate::ui::footer;
 use crate::ui::header;
@@ -30,6 +31,10 @@ pub struct View {
     confirm_quit: bool,
     last_template_save: Option<Flash<String>>,
     last_template_load: Option<Flash<String>>,
+    pub channel_strips: ChannelStrips,
+    pub total_ticks: u64,
+    /// App-launch time, for the "Session HH:MM:SS" header timer.
+    pub started_at: DateTime<Local>,
 }
 
 /// Rails-style "flash": pairs a value with the moment it was set, so
@@ -63,7 +68,14 @@ impl View {
             confirm_quit: false,
             last_template_save: None,
             last_template_load: None,
+            channel_strips: ChannelStrips::new(),
+            total_ticks: 0,
+            started_at: Local::now(),
         }
+    }
+
+    pub fn tick(&mut self) {
+        self.total_ticks += 1;
     }
 
     pub fn open_modal(&mut self, modal: ActiveModal) {
@@ -155,7 +167,7 @@ impl View {
 
         header::draw(frame, header_area, app, self);
         waveform::draw(frame, main_v[0], app);
-        app.channel_strips.draw(frame, main_v[2], app);
+        self.channel_strips.draw(frame, main_v[2], app);
         timeline::draw(frame, body_h[1], app, self);
         footer::draw(frame, footer_area, app, self);
 

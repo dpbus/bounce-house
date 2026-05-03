@@ -15,14 +15,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         .constraints([Constraint::Fill(1), Constraint::Length(RIGHT_COL_WIDTH)])
         .split(area);
 
-    frame.render_widget(Paragraph::new(status_line(app)), chunks[0]);
+    frame.render_widget(Paragraph::new(status_line(app, view)), chunks[0]);
     if let Some(line) = flash_line(view) {
         frame.render_widget(Paragraph::new(line).right_aligned(), chunks[1]);
     }
 }
 
-fn status_line(app: &App) -> Line<'static> {
-    let mut spans = session_duration_spans(app);
+fn status_line(app: &App, view: &View) -> Line<'static> {
+    let mut spans = session_duration_spans(view);
     if let Some(folder) = recording_folder(app) {
         spans.extend(separator());
         spans.push(Span::raw(folder));
@@ -34,8 +34,8 @@ fn separator() -> Vec<Span<'static>> {
     vec![Span::styled("  •  ", Style::default().fg(Color::DarkGray))]
 }
 
-fn session_duration_spans(app: &App) -> Vec<Span<'static>> {
-    let secs = (Local::now() - app.started_at).num_seconds().max(0) as u64;
+fn session_duration_spans(view: &View) -> Vec<Span<'static>> {
+    let secs = (Local::now() - view.started_at).num_seconds().max(0) as u64;
     vec![
         Span::styled("Session ", Style::default().fg(Color::DarkGray)),
         Span::raw(format!(

@@ -1,7 +1,5 @@
 use std::io;
 
-use chrono::{DateTime, Local};
-
 use crate::audio::{AudioInput, Device};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::CaptureError;
@@ -10,7 +8,6 @@ use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
 use crate::transport::Transport;
-use crate::ui::ChannelStrips;
 
 pub struct App {
     pub settings: Settings,
@@ -18,10 +15,6 @@ pub struct App {
     pub mixer: Mixer,
     pub transport: Transport,
     pub bounce_pool: BouncePool,
-    pub total_ticks: u64,
-    /// App-launch time, for the "Session HH:MM:SS" header timer.
-    pub started_at: DateTime<Local>,
-    pub channel_strips: ChannelStrips,
 }
 
 #[derive(Debug)]
@@ -48,19 +41,7 @@ impl App {
             mixer: Mixer::start(audio_input, levels_consumer),
             transport: Transport::new(),
             bounce_pool: BouncePool::start(),
-            total_ticks: 0,
-            started_at: Local::now(),
-            channel_strips: ChannelStrips::new(),
         }
-    }
-
-    pub fn scroll_strips_left(&mut self, n: usize) {
-        self.channel_strips.scroll_left(n);
-    }
-
-    pub fn scroll_strips_right(&mut self, n: usize) {
-        let visible = self.mixer.armed_channels().count();
-        self.channel_strips.scroll_right(n, visible);
     }
 
     pub fn recording_duration_secs(&self) -> Option<u64> {
@@ -72,8 +53,7 @@ impl App {
         Some(samples / sr)
     }
 
-    pub fn tick_display(&mut self) {
-        self.total_ticks += 1;
+    pub fn tick(&mut self) {
         self.apply_bounce_events();
         let recorded = self.transport.capture().is_some_and(|c| !c.is_paused());
         self.mixer.drain_observations(recorded);

@@ -74,7 +74,8 @@ fn main_loop(
     view: &mut View,
 ) -> io::Result<()> {
     loop {
-        app.tick_display();
+        view.tick();
+        app.tick();
 
         terminal.draw(|frame| view.draw(frame, app))?;
 
