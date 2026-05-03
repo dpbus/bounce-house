@@ -125,28 +125,15 @@ impl App {
 
     pub fn save_template(&mut self, name: &str) -> io::Result<()> {
         let path = template::path_for_name(&self.settings.templates_dir, name);
-        let template = Template {
-            name: name.to_string(),
-            device_name: self.mixer.audio_input.device_name().to_string(),
-            channels: self.mixer.channels.clone(),
-        };
-        template.save(&path)
+        self.mixer.snapshot_template(name).save(&path)
     }
 
     pub fn list_templates(&self) -> Vec<Template> {
         template::list(&self.settings.templates_dir).unwrap_or_default()
     }
 
-    /// Applies `template` to the live mix. Out-of-range template
-    /// indices are silently dropped; channels on the device not covered
-    /// by the template keep their fresh defaults.
     pub fn load_template(&mut self, template: &Template) {
-        for tmpl_channel in &template.channels {
-            if let Some(channel) = self.mixer.channels.get_mut(tmpl_channel.index as usize) {
-                channel.label = tmpl_channel.label.clone();
-                channel.armed = tmpl_channel.armed;
-            }
-        }
+        self.mixer.apply_template(template);
     }
 
     pub fn toggle_armed(&mut self, channel_index: u16) {

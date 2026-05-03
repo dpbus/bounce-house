@@ -2,6 +2,7 @@ use crate::audio::{AudioInput, LevelObservation};
 use crate::channel::Channel;
 use crate::level_history::LevelHistory;
 use crate::meters::Meters;
+use crate::template::Template;
 
 pub struct Mixer {
     pub audio_input: AudioInput,
@@ -61,6 +62,23 @@ impl Mixer {
             self.audio_input.sample_position(),
             self.audio_input.sample_rate().0 as u64,
         );
+    }
+
+    pub fn snapshot_template(&self, name: &str) -> Template {
+        Template {
+            name: name.to_string(),
+            device_name: self.audio_input.device_name().to_string(),
+            channels: self.channels.clone(),
+        }
+    }
+
+    pub fn apply_template(&mut self, template: &Template) {
+        for tmpl_channel in &template.channels {
+            if let Some(channel) = self.channels.get_mut(tmpl_channel.index as usize) {
+                channel.label = tmpl_channel.label.clone();
+                channel.armed = tmpl_channel.armed;
+            }
+        }
     }
 }
 
