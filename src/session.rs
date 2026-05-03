@@ -76,7 +76,10 @@ impl Session {
     }
 
     pub fn recording_track_paths(&self) -> Vec<PathBuf> {
-        self.tracks.iter().map(|t| self.dir.join(&t.file)).collect()
+        self.tracks()
+            .iter()
+            .map(|t| self.dir.join(&t.file))
+            .collect()
     }
 
     fn track_subpath(channel: &Channel) -> PathBuf {
