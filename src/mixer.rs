@@ -93,9 +93,9 @@ impl Mixer {
             return;
         };
         if capture.is_paused() {
-            capture.resume(&self.audio_input);
+            capture.resume();
         } else {
-            capture.pause(&self.audio_input);
+            capture.pause();
         }
     }
 

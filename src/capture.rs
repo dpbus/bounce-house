@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::audio::{AudioInput, ChannelOutput, DiskWriter};
+use crate::audio::{AudioInput, ChannelOutput, ConsumerControl, DiskWriter};
 use crate::channel::Channel;
 use crate::session::Session;
 
@@ -14,6 +14,7 @@ pub enum CaptureError {
 pub struct Capture {
     start_sample: u64,
     audio_input_position: Arc<AtomicU64>,
+    consumer_control: ConsumerControl,
     writer: DiskWriter,
     total_paused_samples: u64,
     pause_start_sample: Option<u64>,
@@ -45,7 +46,7 @@ impl Capture {
 
         let start_sample = audio_input.sample_position();
         let audio_input_position = audio_input.sample_position_atomic();
-        let consumer = audio_input.attach_consumer();
+        let (consumer, consumer_control) = audio_input.attach_consumer();
         let writer = DiskWriter::start(
             consumer,
             audio_input.sample_rate(),
@@ -56,35 +57,36 @@ impl Capture {
         Ok(Self {
             start_sample,
             audio_input_position,
+            consumer_control,
             writer,
             total_paused_samples: 0,
             pause_start_sample: None,
         })
     }
 
-    pub fn stop(self, audio_input: &AudioInput, session: &mut Session) {
-        audio_input.detach_consumer();
+    pub fn stop(self, session: &mut Session) {
         let rel_end = self.rel_sample_position();
+        self.consumer_control.detach();
         session.stop_recording(rel_end);
         // self drops here, joining the writer thread
     }
 
-    pub fn pause(&mut self, audio_input: &AudioInput) -> bool {
+    pub fn pause(&mut self) -> bool {
         if self.is_paused() {
             return false;
         }
         self.pause_start_sample = Some(self.audio_input_position.load(Ordering::Relaxed));
-        audio_input.pause();
+        self.consumer_control.pause();
         true
     }
 
-    pub fn resume(&mut self, audio_input: &AudioInput) -> bool {
+    pub fn resume(&mut self) -> bool {
         let Some(started) = self.pause_start_sample.take() else {
             return false;
         };
         let now = self.audio_input_position.load(Ordering::Relaxed);
         self.total_paused_samples += now.saturating_sub(started);
-        audio_input.resume();
+        self.consumer_control.resume();
         true
     }
 

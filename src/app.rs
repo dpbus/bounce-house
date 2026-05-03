@@ -107,7 +107,7 @@ impl App {
 
     pub fn stop_recording(&mut self) {
         if let Some(capture) = self.mixer.take_capture() {
-            capture.stop(&self.mixer.audio_input, &mut self.session);
+            capture.stop(&mut self.session);
         }
     }
 

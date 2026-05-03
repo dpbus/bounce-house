@@ -7,7 +7,7 @@ mod levels;
 
 pub use device::Device;
 pub use disk_writer::{ChannelOutput, DiskWriter};
-pub use input::AudioInput;
+pub use input::{AudioInput, ConsumerControl};
 pub use levels::LevelObservation;
 
 pub fn list_devices() -> Vec<Device> {
