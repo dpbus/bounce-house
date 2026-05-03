@@ -4,8 +4,9 @@ use std::ops::Range;
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, RecordingState};
+use crate::app::App;
 use crate::timeline::{BounceStatus, Take, Timeline};
+use crate::transport::RecordingState;
 use crate::ui::view::View;
 use crate::ui::widgets::{
     dim_status, input_with_cursor, key_hint, mmss, panel, spinner_glyph, take_color,
@@ -78,7 +79,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     }
 
     let timeline = session.timeline();
-    let is_recording = app.mixer.is_recording();
+    let is_recording = app.transport.is_recording();
     let layout = TimelineLayout::new(app.recording_duration_secs().unwrap_or(0), panel_rows);
     let naming_row = naming_row(view, timeline, &layout);
     let bottom_row = naming_row.unwrap_or(layout.now_row);
@@ -113,11 +114,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
     }
 
     let since_secs = app
-        .mixer
+        .transport
         .rel_sample_position()
         .map(|rel| timeline.since_last_marker_secs(rel))
         .unwrap_or(0);
-    grid[layout.now_row] = now_line(layout.now_sec, since_secs, app.mixer.recording_state());
+    grid[layout.now_row] = now_line(layout.now_sec, since_secs, app.transport.recording_state());
 
     frame.render_widget(Paragraph::new(grid), inner);
 }

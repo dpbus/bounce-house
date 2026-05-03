@@ -12,6 +12,7 @@ mod settings;
 mod template;
 mod timeline;
 mod track;
+mod transport;
 mod ui;
 mod units;
 
