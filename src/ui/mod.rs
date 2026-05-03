@@ -9,6 +9,8 @@ mod text_input;
 mod view;
 mod widgets;
 
+pub use panels::channel_strips::ChannelStrips;
+
 pub enum Action {
     Stay,
     Close,

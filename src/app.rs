@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::io;
 
 use chrono::{DateTime, Local};
@@ -12,6 +11,7 @@ use crate::meters::Meters;
 use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
+use crate::ui::ChannelStrips;
 
 pub struct App {
     pub settings: Settings,
@@ -26,13 +26,7 @@ pub struct App {
     pub total_ticks: u64,
     /// App-launch time, for the "Session HH:MM:SS" header timer.
     pub started_at: DateTime<Local>,
-    /// Leftmost visible channel in the strip panel. Bounded by the
-    /// strips panel based on its width — see `last_strip_capacity`.
-    pub channel_viewport_offset: usize,
-    /// How many strips the panel last had room for; written by the
-    /// panel during draw, read by the scroll methods so they can
-    /// clamp the offset to the same useful range the panel will show.
-    pub last_strip_capacity: Cell<usize>,
+    pub channel_strips: ChannelStrips,
 }
 
 pub enum RuntimeMode {
@@ -103,8 +97,7 @@ impl App {
             level_history: LevelHistory::new(),
             total_ticks: 0,
             started_at: Local::now(),
-            channel_viewport_offset: 0,
-            last_strip_capacity: Cell::new(0),
+            channel_strips: ChannelStrips::new(),
         }
     }
 
@@ -113,14 +106,12 @@ impl App {
     }
 
     pub fn scroll_strips_left(&mut self, n: usize) {
-        self.channel_viewport_offset = self.channel_viewport_offset.saturating_sub(n);
+        self.channel_strips.scroll_left(n);
     }
 
     pub fn scroll_strips_right(&mut self, n: usize) {
         let visible = self.armed_channels().count();
-        let cap = self.last_strip_capacity.get().max(1);
-        let max = visible.saturating_sub(cap);
-        self.channel_viewport_offset = (self.channel_viewport_offset + n).min(max);
+        self.channel_strips.scroll_right(n, visible);
     }
 
     pub fn is_recording(&self) -> bool {

@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
@@ -8,58 +10,85 @@ use crate::ui::widgets::{key_hint, vertical_meter};
 const STRIP_WIDTH: u16 = 14;
 const METER_WIDTH: usize = 3;
 
-pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let channels: Vec<&Channel> = app.channels.iter().filter(|c| c.armed).collect();
-    let total = app.audio_input.channel_count();
+pub struct ChannelStrips {
+    offset: usize,
+    /// Capacity the panel last had room for; written during draw,
+    /// read by scroll_right so it can clamp the offset to the same
+    /// useful range the panel will show.
+    last_capacity: Cell<usize>,
+}
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .padding(Padding::new(2, 2, 1, 1))
-        .border_style(Style::default().fg(Color::DarkGray));
-    let inner = block.inner(area);
-
-    // When the list overflows the panel, reserve 1 col on each side
-    // for the scroll chevrons so strips and chevrons never collide.
-    let needs_scroll = channels.len() > (inner.width / STRIP_WIDTH) as usize;
-    let strip_area = if needs_scroll {
-        Rect::new(
-            inner.x + 1,
-            inner.y,
-            inner.width.saturating_sub(2),
-            inner.height,
-        )
-    } else {
-        inner
-    };
-
-    let capacity = (strip_area.width / STRIP_WIDTH) as usize;
-    app.last_strip_capacity.set(capacity);
-    let max_offset = channels.len().saturating_sub(capacity);
-    let offset = app.channel_viewport_offset.min(max_offset);
-    let end = (offset + capacity).min(channels.len());
-    let off_left = offset;
-    let off_right = channels.len().saturating_sub(end);
-
-    let title = format!(" Channels — {}/{} armed ", channels.len(), total);
-    frame.render_widget(block.title(title).title(title_hint()), area);
-
-    if off_left > 0 {
-        draw_edge_chevrons(frame, inner.x, inner, "◀");
-    }
-    if off_right > 0 {
-        draw_edge_chevrons(frame, inner.x + inner.width - 1, inner, "▶");
+impl ChannelStrips {
+    pub fn new() -> Self {
+        ChannelStrips {
+            offset: 0,
+            last_capacity: Cell::new(0),
+        }
     }
 
-    let visible = &channels[offset..end];
-    let constraints: Vec<Constraint> =
-        std::iter::repeat_n(Constraint::Length(STRIP_WIDTH), visible.len()).collect();
-    let strips = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(constraints)
-        .split(strip_area);
+    pub fn scroll_left(&mut self, n: usize) {
+        self.offset = self.offset.saturating_sub(n);
+    }
 
-    for (i, channel) in visible.iter().enumerate() {
-        channel_strip(frame, strips[i], channel, app);
+    pub fn scroll_right(&mut self, n: usize, visible_count: usize) {
+        let cap = self.last_capacity.get().max(1);
+        let max = visible_count.saturating_sub(cap);
+        self.offset = (self.offset + n).min(max);
+    }
+
+    pub fn draw(&self, frame: &mut Frame, area: Rect, app: &App) {
+        let channels: Vec<&Channel> = app.channels.iter().filter(|c| c.armed).collect();
+        let total = app.audio_input.channel_count();
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .padding(Padding::new(2, 2, 1, 1))
+            .border_style(Style::default().fg(Color::DarkGray));
+        let inner = block.inner(area);
+
+        // When the list overflows the panel, reserve 1 col on each side
+        // for the scroll chevrons so strips and chevrons never collide.
+        let needs_scroll = channels.len() > (inner.width / STRIP_WIDTH) as usize;
+        let strip_area = if needs_scroll {
+            Rect::new(
+                inner.x + 1,
+                inner.y,
+                inner.width.saturating_sub(2),
+                inner.height,
+            )
+        } else {
+            inner
+        };
+
+        let capacity = (strip_area.width / STRIP_WIDTH) as usize;
+        self.last_capacity.set(capacity);
+        let max_offset = channels.len().saturating_sub(capacity);
+        let offset = self.offset.min(max_offset);
+        let end = (offset + capacity).min(channels.len());
+        let off_left = offset;
+        let off_right = channels.len().saturating_sub(end);
+
+        let title = format!(" Channels — {}/{} armed ", channels.len(), total);
+        frame.render_widget(block.title(title).title(title_hint()), area);
+
+        if off_left > 0 {
+            draw_edge_chevrons(frame, inner.x, inner, "◀");
+        }
+        if off_right > 0 {
+            draw_edge_chevrons(frame, inner.x + inner.width - 1, inner, "▶");
+        }
+
+        let visible = &channels[offset..end];
+        let constraints: Vec<Constraint> =
+            std::iter::repeat_n(Constraint::Length(STRIP_WIDTH), visible.len()).collect();
+        let strips = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(strip_area);
+
+        for (i, channel) in visible.iter().enumerate() {
+            channel_strip(frame, strips[i], channel, app);
+        }
     }
 }
 
