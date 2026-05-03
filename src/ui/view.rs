@@ -4,8 +4,9 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding};
 
 use crate::app::App;
+use crate::dispatch::{Action, fire};
 use crate::transport::RecordingState;
-use crate::ui::Action;
+use crate::ui::ModalOutcome;
 use crate::ui::footer;
 use crate::ui::header;
 use crate::ui::input;
@@ -170,7 +171,7 @@ impl View {
     pub fn handle_key(&mut self, key: KeyEvent, app: &mut App) -> input::Outcome {
         // Inline overlays take priority over modals and over normal input.
         if let Some(mut overlay) = self.take_naming.take() {
-            if matches!(overlay.handle_key(key, app), Action::Stay) {
+            if matches!(overlay.handle_key(key, app), ModalOutcome::Stay) {
                 self.take_naming = Some(overlay);
             }
             return input::Outcome::Continue;
@@ -181,7 +182,7 @@ impl View {
                 key.code,
                 KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y')
             ) {
-                app.stop_recording();
+                fire(Action::StopRecording, app);
             }
             return input::Outcome::Continue;
         }
@@ -200,7 +201,7 @@ impl View {
         // the take, the modal's borrow against `self.active_modal` would
         // alias the `self` we need to forward.
         if let Some(mut modal) = self.active_modal.take() {
-            if matches!(modal.handle_key(key, app, self), Action::Stay) {
+            if matches!(modal.handle_key(key, app, self), ModalOutcome::Stay) {
                 self.active_modal = Some(modal);
             }
             return input::Outcome::Continue;

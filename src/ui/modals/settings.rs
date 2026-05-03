@@ -4,7 +4,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::App;
 use crate::settings::Settings;
-use crate::ui::Action;
+use crate::ui::ModalOutcome;
 use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
 use crate::ui::widgets::{input_with_cursor, key_hint, modal};
@@ -49,16 +49,16 @@ impl SettingsModal {
         }
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, _view: &mut View) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, _view: &mut View) -> ModalOutcome {
         match key.code {
-            KeyCode::Esc => Action::Close,
+            KeyCode::Esc => ModalOutcome::Close,
             KeyCode::Tab | KeyCode::Down => {
                 self.focused = (self.focused + 1) % FIELDS.len();
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::BackTab | KeyCode::Up => {
                 self.focused = (self.focused + FIELDS.len() - 1) % FIELDS.len();
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::Enter => {
                 match app.settings.update_paths(
@@ -66,16 +66,16 @@ impl SettingsModal {
                     self.bufs[1].value(),
                     self.bufs[2].value(),
                 ) {
-                    Ok(()) => Action::Close,
+                    Ok(()) => ModalOutcome::Close,
                     Err(e) => {
                         self.error = Some(e.to_string());
-                        Action::Stay
+                        ModalOutcome::Stay
                     }
                 }
             }
             _ => {
                 self.bufs[self.focused].handle_edit_key(key);
-                Action::Stay
+                ModalOutcome::Stay
             }
         }
     }

@@ -3,8 +3,9 @@ use ratatui::prelude::*;
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::App;
+use crate::dispatch::{Action, fire};
 use crate::template::Template;
-use crate::ui::Action;
+use crate::ui::ModalOutcome;
 use crate::ui::view::View;
 use crate::ui::widgets::{
     channel_preview_row, channels_summary, dim_status, flow_columns, key_hint, labeled, modal,
@@ -36,30 +37,30 @@ impl LoadTemplateModal {
         Self { entries, cursor: 0 }
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> ModalOutcome {
         match key.code {
-            KeyCode::Esc => Action::Close,
+            KeyCode::Esc => ModalOutcome::Close,
             KeyCode::Up | KeyCode::Char('k') => {
                 self.cursor = self.cursor.saturating_sub(1);
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 let max = self.entries.len().saturating_sub(1);
                 if self.cursor < max {
                     self.cursor += 1;
                 }
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::Enter => {
                 let Some(template) = self.entries.get(self.cursor) else {
-                    return Action::Stay;
+                    return ModalOutcome::Stay;
                 };
                 let name = template.name.clone();
-                app.load_template(template);
+                fire(Action::LoadTemplate(template.clone()), app);
                 view.flash_template_load(name);
-                Action::Close
+                ModalOutcome::Close
             }
-            _ => Action::Stay,
+            _ => ModalOutcome::Stay,
         }
     }
 

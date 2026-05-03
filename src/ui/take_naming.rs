@@ -1,7 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::App;
-use crate::ui::Action;
+use crate::dispatch::{Action, fire};
+use crate::ui::ModalOutcome;
 use crate::ui::text_input::TextInput;
 
 /// Why the take-naming overlay is open. Determines cancellation
@@ -40,30 +41,30 @@ impl TakeNaming {
         &self.input
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App) -> ModalOutcome {
         match key.code {
             KeyCode::Esc => {
                 self.cancel(app);
-                Action::Close
+                ModalOutcome::Close
             }
             KeyCode::Enter => {
                 if self.input.value().trim().is_empty() {
                     self.cancel(app);
                 } else {
-                    app.create_take(self.input.value());
+                    fire(Action::CreateTake(self.input.value().to_string()), app);
                 }
-                Action::Close
+                ModalOutcome::Close
             }
             _ => {
                 self.input.handle_edit_key(key);
-                Action::Stay
+                ModalOutcome::Stay
             }
         }
     }
 
     fn cancel(&self, app: &mut App) {
         if matches!(self.origin, TakeOrigin::Fresh) {
-            app.delete_last_marker();
+            fire(Action::DeleteLastMarker, app);
         }
     }
 }

@@ -6,7 +6,8 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragra
 
 use crate::app::App;
 use crate::channel::Channel;
-use crate::ui::Action;
+use crate::dispatch::{Action, fire};
+use crate::ui::ModalOutcome;
 use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
 use crate::ui::widgets::{
@@ -42,49 +43,49 @@ impl ChannelPickerModal {
         }
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, _view: &mut View) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, _view: &mut View) -> ModalOutcome {
         if self.renaming.is_some() {
             return self.handle_rename_key(key, app);
         }
         self.handle_browse_key(key, app)
     }
 
-    fn handle_browse_key(&mut self, key: KeyEvent, app: &mut App) -> Action {
+    fn handle_browse_key(&mut self, key: KeyEvent, app: &mut App) -> ModalOutcome {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('c') | KeyCode::Char('C') => Action::Close,
+            KeyCode::Esc | KeyCode::Char('c') | KeyCode::Char('C') => ModalOutcome::Close,
             KeyCode::Up | KeyCode::Char('k') => {
                 self.cursor = self.cursor.saturating_sub(1);
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 let max = app.mixer.channels.len().saturating_sub(1);
                 if self.cursor < max {
                     self.cursor += 1;
                 }
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::Char(' ') => {
                 if let Some(index) = self.focused_channel_index(app) {
-                    app.toggle_armed(index);
+                    fire(Action::ToggleArmed(index), app);
                 }
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::Tab => {
                 self.renaming = Some(TextInput::with_value(&self.focused_label(app)));
-                Action::Stay
+                ModalOutcome::Stay
             }
-            _ => Action::Stay,
+            _ => ModalOutcome::Stay,
         }
     }
 
-    fn handle_rename_key(&mut self, key: KeyEvent, app: &mut App) -> Action {
+    fn handle_rename_key(&mut self, key: KeyEvent, app: &mut App) -> ModalOutcome {
         let Some(input) = self.renaming.as_mut() else {
-            return Action::Stay;
+            return ModalOutcome::Stay;
         };
         match key.code {
             KeyCode::Esc => {
                 self.renaming = None;
-                Action::Stay
+                ModalOutcome::Stay
             }
             KeyCode::Enter => {
                 let trimmed = input.value().trim();
@@ -94,14 +95,14 @@ impl ChannelPickerModal {
                     Some(trimmed.to_string())
                 };
                 if let Some(index) = self.focused_channel_index(app) {
-                    app.set_label(index, label);
+                    fire(Action::SetLabel(index, label), app);
                 }
                 self.renaming = None;
-                Action::Stay
+                ModalOutcome::Stay
             }
             _ => {
                 input.handle_edit_key(key);
-                Action::Stay
+                ModalOutcome::Stay
             }
         }
     }

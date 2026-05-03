@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::App;
+use crate::dispatch::{Action, fire};
 use crate::transport::RecordingState;
 use crate::ui::modals::{
     ActiveModal, ChannelPickerModal, HelpModal, LoadTemplateModal, SaveTemplateModal, SettingsModal,
@@ -97,15 +98,13 @@ fn decide_with_state(state: RecordingState, key: KeyEvent) -> KeyAction {
 fn apply(app: &mut App, view: &mut View, action: KeyAction) {
     match action {
         KeyAction::None => {}
-        KeyAction::StartRecording => {
-            let _ = app.start_recording();
-        }
+        KeyAction::StartRecording => fire(Action::StartRecording, app),
         KeyAction::OpenConfirmStop => view.open_confirm_stop(),
         KeyAction::OpenConfirmQuit => view.open_confirm_quit(),
-        KeyAction::CycleWaveformWindow => app.cycle_waveform_window(),
-        KeyAction::DropMarker => app.drop_marker(),
+        KeyAction::CycleWaveformWindow => fire(Action::CycleWaveformWindow, app),
+        KeyAction::DropMarker => fire(Action::DropMarker, app),
         KeyAction::MarkAndOpenTakeNaming => {
-            app.drop_marker();
+            fire(Action::DropMarker, app);
             view.open_take_naming(TakeNaming::fresh());
         }
         KeyAction::OpenRetroactiveTakeNaming => {
@@ -113,8 +112,8 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
                 view.open_take_naming(TakeNaming::retroactive());
             }
         }
-        KeyAction::DeleteLastMarker => app.delete_last_marker(),
-        KeyAction::TogglePause => app.toggle_pause(),
+        KeyAction::DeleteLastMarker => fire(Action::DeleteLastMarker, app),
+        KeyAction::TogglePause => fire(Action::TogglePause, app),
         KeyAction::OpenChannelPicker => {
             view.open_modal(ActiveModal::ChannelPicker(ChannelPickerModal::new()));
         }

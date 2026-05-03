@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use crate::app::App;
-use crate::ui::Action;
+use crate::ui::ModalOutcome;
 use crate::ui::view::View;
 use crate::ui::widgets::{key_hint, modal};
 
@@ -17,10 +17,10 @@ impl HelpModal {
         Self
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent, _app: &mut App, _view: &mut View) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent, _app: &mut App, _view: &mut View) -> ModalOutcome {
         match key.code {
-            KeyCode::Esc => Action::Close,
-            _ => Action::Stay,
+            KeyCode::Esc => ModalOutcome::Close,
+            _ => ModalOutcome::Stay,
         }
     }
 

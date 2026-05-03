@@ -11,7 +11,7 @@ mod widgets;
 
 pub use panels::channel_strips::ChannelStrips;
 
-pub enum Action {
+pub enum ModalOutcome {
     Stay,
     Close,
 }
@@ -28,6 +28,7 @@ use ratatui::prelude::*;
 
 use crate::app::App;
 use crate::audio;
+use crate::dispatch;
 use crate::settings::Settings;
 use crate::template::Template;
 use crate::ui::view::View;
@@ -61,7 +62,7 @@ fn bootstrap(
     let mut view = View::new();
     if let Some(t) = template {
         let name = t.name.clone();
-        app.load_template(&t);
+        dispatch::fire(dispatch::Action::LoadTemplate(t), &mut app);
         view.flash_template_load(name);
     }
     main_loop(terminal, &mut app, &mut view)

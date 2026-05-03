@@ -3,6 +3,7 @@ mod audio;
 mod bounce;
 mod capture;
 mod channel;
+mod dispatch;
 mod level_history;
 mod meters;
 mod mixer;

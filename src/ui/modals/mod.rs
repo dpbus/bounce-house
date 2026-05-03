@@ -8,7 +8,7 @@ use crossterm::event::KeyEvent;
 use ratatui::Frame;
 
 use crate::app::App;
-use crate::ui::Action;
+use crate::ui::ModalOutcome;
 use crate::ui::view::View;
 
 pub use channel_picker::ChannelPickerModal;
@@ -29,7 +29,7 @@ pub enum ActiveModal {
 }
 
 impl ActiveModal {
-    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> ModalOutcome {
         match self {
             ActiveModal::SaveTemplate(m) => m.handle_key(key, app, view),
             ActiveModal::LoadTemplate(m) => m.handle_key(key, app, view),

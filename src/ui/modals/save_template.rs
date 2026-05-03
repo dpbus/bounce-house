@@ -3,8 +3,9 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use crate::app::App;
+use crate::dispatch::{Action, dispatch};
 use crate::template;
-use crate::ui::Action;
+use crate::ui::ModalOutcome;
 use crate::ui::text_input::TextInput;
 use crate::ui::view::View;
 use crate::ui::widgets::{
@@ -42,22 +43,22 @@ impl SaveTemplateModal {
         }
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent, app: &mut App, view: &mut View) -> ModalOutcome {
         match key.code {
-            KeyCode::Esc => Action::Close,
+            KeyCode::Esc => ModalOutcome::Close,
             KeyCode::Enter => {
                 let name = self.input.value().trim();
                 if !template::is_valid_name(name) {
-                    return Action::Stay;
+                    return ModalOutcome::Stay;
                 }
-                if app.save_template(name).is_ok() {
+                if dispatch(Action::SaveTemplate(name.to_string()), app).is_ok() {
                     view.flash_template_save(name.to_string());
                 }
-                Action::Close
+                ModalOutcome::Close
             }
             _ => {
                 self.input.handle_edit_key(key);
-                Action::Stay
+                ModalOutcome::Stay
             }
         }
     }

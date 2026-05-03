@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::channel::Channel;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Template {
     pub name: String,
     pub device_name: String,
