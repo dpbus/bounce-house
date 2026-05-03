@@ -13,7 +13,7 @@ use crate::ui::widgets::{
 };
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
-    let label = match app.level_history.window_secs() {
+    let label = match app.mixer.level_history.window_secs() {
         s if s < 60 => format!("{}s", s),
         s if s < 3600 => format!("{} min", s / 60),
         s => format!("{} hr", s / 3600),
@@ -45,19 +45,19 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     let height = canvas_area.height as usize;
 
     let layout = WaveformLayout::new(
-        app.level_history.window_secs(),
+        app.mixer.level_history.window_secs(),
         cols,
-        app.audio_input.sample_rate().0 as u64,
-        app.audio_input.sample_position(),
+        app.mixer.audio_input.sample_rate().0 as u64,
+        app.mixer.audio_input.sample_position(),
     );
-    let amps = waveform_amps(app.level_history.samples(), &layout);
+    let amps = waveform_amps(app.mixer.level_history.samples(), &layout);
     let marker_columns: Vec<(Option<u8>, usize)> = app
         .session
         .timeline()
         .markers()
         .iter()
         .filter_map(|m| {
-            let abs = app.relative_to_absolute(m.sample)?;
+            let abs = app.mixer.relative_to_absolute(m.sample)?;
             let col = layout.sample_to_column(abs)?;
             Some((app.session.timeline().marker_color_index(m.sample), col))
         })

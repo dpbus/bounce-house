@@ -32,7 +32,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
         return confirm_overlay_line("Quit?");
     }
     let mut spans = Vec::new();
-    match app.recording_state() {
+    match app.mixer.recording_state() {
         RecordingState::Recording => {
             let last_unbound = app.has_unbound_marker();
             spans.extend(key_hint("T", "take  ", Color::Cyan));
@@ -63,7 +63,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
         }
         RecordingState::Idle => {
             spans.extend(key_hint_when(
-                app.armed_channels().next().is_some(),
+                app.mixer.armed_channels().next().is_some(),
                 "R",
                 "record  ",
                 Color::Cyan,
@@ -80,7 +80,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
 }
 
 fn right(app: &App, view: &View) -> Line<'static> {
-    let quit_actionable = !app.is_recording()
+    let quit_actionable = !app.mixer.is_recording()
         && view.take_naming().is_none()
         && !view.confirm_stop_active()
         && !view.confirm_quit_active();

@@ -37,8 +37,8 @@ impl ChannelStrips {
     }
 
     pub fn draw(&self, frame: &mut Frame, area: Rect, app: &App) {
-        let channels: Vec<&Channel> = app.channels.iter().filter(|c| c.armed).collect();
-        let total = app.audio_input.channel_count();
+        let channels: Vec<&Channel> = app.mixer.channels.iter().filter(|c| c.armed).collect();
+        let total = app.mixer.audio_input.channel_count();
 
         let block = Block::default()
             .borders(Borders::ALL)
@@ -113,8 +113,8 @@ fn channel_strip(frame: &mut Frame, area: Rect, channel: &Channel, app: &App) {
     let chunks = strip_chunks(area);
     let i = channel.index as usize;
 
-    let level = app.meters.display_levels()[i];
-    let peak = app.meters.peak_holds()[i];
+    let level = app.mixer.meters.display_levels()[i];
+    let peak = app.mixer.meters.peak_holds()[i];
     let lines = vertical_meter(
         level,
         Some(peak),

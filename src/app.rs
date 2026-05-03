@@ -2,12 +2,11 @@ use std::io;
 
 use chrono::{DateTime, Local};
 
-use crate::audio::{AudioInput, Device, LevelObservation};
+use crate::audio::{AudioInput, Device};
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::{Capture, CaptureError};
 use crate::channel::Channel;
-use crate::level_history::LevelHistory;
-use crate::meters::Meters;
+use crate::mixer::{Mixer, RuntimeMode};
 use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
@@ -16,46 +15,12 @@ use crate::ui::ChannelStrips;
 pub struct App {
     pub settings: Settings,
     pub session: Session,
-    pub audio_input: AudioInput,
-    pub levels_consumer: rtrb::Consumer<LevelObservation>,
+    pub mixer: Mixer,
     pub bounce_pool: BouncePool,
-    pub runtime_mode: RuntimeMode,
-    pub channels: Vec<Channel>,
-    pub meters: Meters,
-    pub level_history: LevelHistory,
     pub total_ticks: u64,
     /// App-launch time, for the "Session HH:MM:SS" header timer.
     pub started_at: DateTime<Local>,
     pub channel_strips: ChannelStrips,
-}
-
-pub enum RuntimeMode {
-    Idle,
-    Recording(Capture),
-}
-
-impl RuntimeMode {
-    pub fn is_idle(&self) -> bool {
-        matches!(self, RuntimeMode::Idle)
-    }
-
-    pub fn is_recording(&self) -> bool {
-        matches!(self, RuntimeMode::Recording(_))
-    }
-
-    pub fn capture(&self) -> Option<&Capture> {
-        match self {
-            RuntimeMode::Recording(c) => Some(c),
-            RuntimeMode::Idle => None,
-        }
-    }
-
-    pub fn capture_mut(&mut self) -> Option<&mut Capture> {
-        match self {
-            RuntimeMode::Recording(c) => Some(c),
-            RuntimeMode::Idle => None,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,27 +47,16 @@ impl From<CaptureError> for AppError {
 impl App {
     pub fn new(device: Device, settings: Settings) -> Self {
         let (audio_input, levels_consumer) = AudioInput::start(device);
-        let n = audio_input.channel_count() as usize;
-        let channels = (0..audio_input.channel_count()).map(Channel::new).collect();
         let session = Session::new(audio_input.sample_rate(), &settings);
         App {
             settings,
             session,
-            audio_input,
-            levels_consumer,
+            mixer: Mixer::start(audio_input, levels_consumer),
             bounce_pool: BouncePool::start(),
-            runtime_mode: RuntimeMode::Idle,
-            channels,
-            meters: Meters::new(n),
-            level_history: LevelHistory::new(),
             total_ticks: 0,
             started_at: Local::now(),
             channel_strips: ChannelStrips::new(),
         }
-    }
-
-    pub fn armed_channels(&self) -> impl Iterator<Item = &Channel> + '_ {
-        self.channels.iter().filter(|c| c.armed)
     }
 
     pub fn scroll_strips_left(&mut self, n: usize) {
@@ -110,47 +64,15 @@ impl App {
     }
 
     pub fn scroll_strips_right(&mut self, n: usize) {
-        let visible = self.armed_channels().count();
+        let visible = self.mixer.armed_channels().count();
         self.channel_strips.scroll_right(n, visible);
-    }
-
-    pub fn is_recording(&self) -> bool {
-        self.runtime_mode.is_recording()
-    }
-
-    pub fn recording_state(&self) -> RecordingState {
-        match self.runtime_mode.capture() {
-            Some(c) if c.is_paused() => RecordingState::Paused,
-            Some(_) => RecordingState::Recording,
-            None => RecordingState::Idle,
-        }
-    }
-
-    pub fn toggle_pause(&mut self) {
-        let Some(capture) = self.runtime_mode.capture_mut() else {
-            return;
-        };
-        if capture.is_paused() {
-            capture.resume(&self.audio_input);
-        } else {
-            capture.pause(&self.audio_input);
-        }
-    }
-
-    pub fn rel_sample_position(&self) -> Option<u64> {
-        self.runtime_mode.capture().map(|c| c.rel_sample_position())
-    }
-
-    pub fn relative_to_absolute(&self, rel: u64) -> Option<u64> {
-        self.runtime_mode.capture().map(|c| c.absolute(rel))
     }
 
     pub fn recording_duration_secs(&self) -> Option<u64> {
         let sr = (self.session.sample_rate().0 as u64).max(1);
         let samples = self
-            .runtime_mode
-            .capture()
-            .map(|c| c.rel_sample_position())
+            .mixer
+            .rel_sample_position()
             .or(self.session.end_sample())?;
         Some(samples / sr)
     }
@@ -158,11 +80,8 @@ impl App {
     pub fn tick_display(&mut self) {
         self.total_ticks += 1;
         self.apply_bounce_events();
-        self.drain_level_observations();
-        self.level_history.evict_old(
-            self.audio_input.sample_position(),
-            self.audio_input.sample_rate().0 as u64,
-        );
+        self.mixer.drain_observations();
+        self.mixer.evict_old_history();
     }
 
     fn apply_bounce_events(&mut self) {
@@ -173,49 +92,33 @@ impl App {
         }
     }
 
-    fn drain_level_observations(&mut self) {
-        let recorded = self.runtime_mode.capture().is_some_and(|c| !c.is_paused());
-        while let Ok(obs) = self.levels_consumer.pop() {
-            self.meters.observe(&obs);
-            let combined = combined_armed_peak(&obs.channel_peaks, &self.channels);
-            self.level_history.push(obs.sample, combined, recorded);
-        }
-        self.meters.decay();
-    }
-
-    pub fn cycle_waveform_window(&mut self) {
-        self.level_history.cycle_window();
-    }
-
     pub fn start_recording(&mut self) -> Result<(), AppError> {
-        if !self.runtime_mode.is_idle() {
+        if !self.mixer.is_idle() {
             return Err(AppError::NotIdle);
         }
         if self.session.has_recording() {
             self.session = self.session.fork_for_new_recording(&self.settings);
         }
-        let armed_channels: Vec<Channel> = self.armed_channels().cloned().collect();
-        let capture = Capture::start(&self.audio_input, &mut self.session, &armed_channels)?;
-        self.runtime_mode = RuntimeMode::Recording(capture);
+        let armed: Vec<Channel> = self.mixer.armed_channels().cloned().collect();
+        let capture = Capture::start(&self.mixer.audio_input, &mut self.session, &armed)?;
+        self.mixer.runtime_mode = RuntimeMode::Recording(capture);
         Ok(())
     }
 
     pub fn stop_recording(&mut self) {
-        if let RuntimeMode::Recording(capture) =
-            std::mem::replace(&mut self.runtime_mode, RuntimeMode::Idle)
-        {
-            capture.stop(&self.audio_input, &mut self.session);
+        if let Some(capture) = self.mixer.take_capture() {
+            capture.stop(&self.mixer.audio_input, &mut self.session);
         }
     }
 
     pub fn drop_marker(&mut self) {
-        if let Some(rel) = self.rel_sample_position() {
+        if let Some(rel) = self.mixer.rel_sample_position() {
             self.session.drop_marker(rel);
         }
     }
 
     pub fn delete_last_marker(&mut self) {
-        if !self.is_recording() {
+        if !self.mixer.is_recording() {
             return;
         }
         self.session.delete_last_marker();
@@ -242,7 +145,11 @@ impl App {
             bounces_dir: self.session.bounces_dir.clone(),
             filename_prefix: self.session.bounces_filename_prefix.clone(),
             track_files: self.session.recording_track_paths(),
-            flushed_samples: self.runtime_mode.capture().map(|c| c.flushed_samples()),
+            flushed_samples: self
+                .mixer
+                .runtime_mode
+                .capture()
+                .map(|c| c.flushed_samples()),
         };
         self.bounce_pool.dispatch(job);
     }
@@ -251,8 +158,8 @@ impl App {
         let path = template::path_for_name(&self.settings.templates_dir, name);
         let template = Template {
             name: name.to_string(),
-            device_name: self.audio_input.device_name().to_string(),
-            channels: self.channels.clone(),
+            device_name: self.mixer.audio_input.device_name().to_string(),
+            channels: self.mixer.channels.clone(),
         };
         template.save(&path)
     }
@@ -266,7 +173,7 @@ impl App {
     /// by the template keep their fresh defaults.
     pub fn load_template(&mut self, template: &Template) {
         for tmpl_channel in &template.channels {
-            if let Some(channel) = self.channels.get_mut(tmpl_channel.index as usize) {
+            if let Some(channel) = self.mixer.channels.get_mut(tmpl_channel.index as usize) {
                 channel.label = tmpl_channel.label.clone();
                 channel.armed = tmpl_channel.armed;
             }
@@ -274,26 +181,21 @@ impl App {
     }
 
     pub fn toggle_armed(&mut self, channel_index: u16) {
-        if self.is_recording() {
+        if self.mixer.is_recording() {
             return;
         }
-        if let Some(channel) = self.channels.get_mut(channel_index as usize) {
-            channel.armed = !channel.armed;
-        }
+        self.mixer.toggle_armed(channel_index);
     }
 
     pub fn set_label(&mut self, channel_index: u16, label: Option<String>) {
-        if let Some(channel) = self.channels.get_mut(channel_index as usize) {
-            channel.label = label;
-        }
+        self.mixer.set_label(channel_index, label);
     }
-}
 
-fn combined_armed_peak(peaks: &[f32], channels: &[Channel]) -> f32 {
-    channels
-        .iter()
-        .zip(peaks)
-        .filter(|(c, _)| c.armed)
-        .map(|(_, &p)| p)
-        .fold(0.0_f32, f32::max)
+    pub fn toggle_pause(&mut self) {
+        self.mixer.toggle_pause();
+    }
+
+    pub fn cycle_waveform_window(&mut self) {
+        self.mixer.cycle_waveform_window();
+    }
 }

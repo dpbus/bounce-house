@@ -42,7 +42,7 @@ enum KeyAction {
 }
 
 fn decide(app: &App, key: KeyEvent) -> KeyAction {
-    decide_with_state(app.recording_state(), key)
+    decide_with_state(app.mixer.recording_state(), key)
 }
 
 fn decide_with_state(state: RecordingState, key: KeyEvent) -> KeyAction {

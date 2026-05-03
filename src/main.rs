@@ -5,6 +5,7 @@ mod capture;
 mod channel;
 mod level_history;
 mod meters;
+mod mixer;
 mod paths;
 mod session;
 mod settings;

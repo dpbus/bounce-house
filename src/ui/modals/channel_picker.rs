@@ -57,7 +57,7 @@ impl ChannelPickerModal {
                 Action::Stay
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                let max = app.channels.len().saturating_sub(1);
+                let max = app.mixer.channels.len().saturating_sub(1);
                 if self.cursor < max {
                     self.cursor += 1;
                 }
@@ -107,11 +107,12 @@ impl ChannelPickerModal {
     }
 
     fn focused_channel_index(&self, app: &App) -> Option<u16> {
-        app.channels.get(self.cursor).map(|c| c.index)
+        app.mixer.channels.get(self.cursor).map(|c| c.index)
     }
 
     fn focused_label(&self, app: &App) -> String {
-        app.channels
+        app.mixer
+            .channels
             .get(self.cursor)
             .and_then(|c| c.label.clone())
             .unwrap_or_default()
@@ -146,17 +147,17 @@ impl ChannelPickerModal {
         // Channel rows interleaved with a dim under-meter separator —
         // breathing room plus a subtle anchor right where adjacent
         // armed meters would otherwise visually merge.
-        let total = app.channels.len();
+        let total = app.mixer.channels.len();
         let mut items: Vec<ListItem> = Vec::with_capacity(total * 2);
-        for (i, channel) in app.channels.iter().enumerate() {
+        for (i, channel) in app.mixer.channels.iter().enumerate() {
             let focused = i == self.cursor;
             let renaming_input = if focused {
                 self.renaming.as_ref()
             } else {
                 None
             };
-            let level = app.meters.display_levels()[channel.index as usize];
-            let peak = app.meters.peak_holds()[channel.index as usize];
+            let level = app.mixer.meters.display_levels()[channel.index as usize];
+            let peak = app.mixer.meters.peak_holds()[channel.index as usize];
             items.push(ListItem::new(channel_row(
                 channel,
                 level,

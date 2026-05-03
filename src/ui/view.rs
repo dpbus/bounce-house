@@ -219,16 +219,19 @@ fn dim_buffer(frame: &mut Frame) {
 }
 
 fn outer_block(app: &App) -> Block<'static> {
-    let (title, color) = match app.recording_state() {
+    let (title, color) = match app.mixer.recording_state() {
         RecordingState::Recording => (
-            format!(" ● Recording — {} ", app.audio_input.device_name()),
+            format!(" ● Recording — {} ", app.mixer.audio_input.device_name()),
             Color::Red,
         ),
         RecordingState::Paused => (
-            format!(" ⏸ Paused — {} ", app.audio_input.device_name()),
+            format!(" ⏸ Paused — {} ", app.mixer.audio_input.device_name()),
             Color::Yellow,
         ),
-        RecordingState::Idle => (format!(" {} ", app.audio_input.device_name()), Color::Cyan),
+        RecordingState::Idle => (
+            format!(" {} ", app.mixer.audio_input.device_name()),
+            Color::Cyan,
+        ),
     };
     Block::default()
         .title(title)

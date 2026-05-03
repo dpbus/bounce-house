@@ -63,7 +63,7 @@ impl SaveTemplateModal {
     }
 
     pub fn draw(&self, frame: &mut Frame, app: &App) {
-        let n_channels = app.channels.len() as u16;
+        let n_channels = app.mixer.channels.len() as u16;
         let layout = pick_layout(n_channels);
         let inner = modal(frame, "Save Template", layout.width, layout.height);
 
@@ -82,7 +82,8 @@ impl SaveTemplateModal {
             .split(inner);
 
         frame.render_widget(Paragraph::new(header_lines(app)), chunks[0]);
-        let channels: Vec<Line<'static>> = app.channels.iter().map(channel_preview_row).collect();
+        let channels: Vec<Line<'static>> =
+            app.mixer.channels.iter().map(channel_preview_row).collect();
         flow_columns(frame, chunks[2], &channels, layout.cols as u32);
         frame.render_widget(Paragraph::new(save_as_line(&self.input)), chunks[4]);
         frame.render_widget(Paragraph::new(hints_line()).centered(), chunks[6]);
@@ -109,10 +110,13 @@ fn pick_layout(n_channels: u16) -> ContentLayout {
 }
 
 fn header_lines(app: &App) -> Vec<Line<'static>> {
-    let total = app.audio_input.channel_count() as usize;
-    let armed = app.armed_channels().count();
+    let total = app.mixer.audio_input.channel_count() as usize;
+    let armed = app.mixer.armed_channels().count();
     vec![
-        labeled("Device:    ", app.audio_input.device_name().to_string()),
+        labeled(
+            "Device:    ",
+            app.mixer.audio_input.device_name().to_string(),
+        ),
         labeled("Channels:  ", channels_summary(armed, total)),
     ]
 }
