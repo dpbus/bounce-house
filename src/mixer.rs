@@ -1,4 +1,4 @@
-use crate::audio::{DeviceInfo, InputDevice, LevelObservation};
+use crate::audio::{DeviceInfo, InputDevice, LevelObservation, OutputDevice};
 use crate::channel::Channel;
 use crate::level_history::LevelHistory;
 use crate::meters::Meters;
@@ -6,6 +6,9 @@ use crate::template::Template;
 
 pub struct Mixer {
     pub input_device: InputDevice,
+    /// `None` for input-only devices (debug fakes).
+    #[allow(dead_code)]
+    pub output_device: Option<OutputDevice>,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub channels: Vec<Channel>,
     pub meters: Meters,
@@ -15,12 +18,14 @@ pub struct Mixer {
 impl Mixer {
     pub fn start(info: &DeviceInfo) -> Self {
         let (input_device, levels_consumer) = InputDevice::start(info);
+        let output_device = OutputDevice::start(info);
         let n = input_device.channel_count() as usize;
         let channels = (0..input_device.channel_count())
             .map(Channel::new)
             .collect();
         Mixer {
             input_device,
+            output_device,
             levels_consumer,
             channels,
             meters: Meters::new(n),

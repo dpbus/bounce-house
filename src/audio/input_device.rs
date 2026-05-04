@@ -11,8 +11,6 @@ use crate::units::SampleRate;
 
 const RECORDING_BUFFER_SECONDS: usize = 10;
 
-/// The running input device: physical hardware + active cpal stream +
-/// audio-thread state. Constructed via `DeviceInfo::start_input()`.
 pub struct InputDevice {
     _stream: cpal::Stream,
     name: String,
