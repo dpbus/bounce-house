@@ -8,6 +8,7 @@ mod level_history;
 mod meters;
 mod mixer;
 mod paths;
+mod playback;
 mod session;
 mod settings;
 mod template;

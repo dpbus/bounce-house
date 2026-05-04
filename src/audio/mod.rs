@@ -13,3 +13,4 @@ pub use disk_writer::{ChannelOutput, DiskWriter};
 pub use input_device::{ConsumerControl, InputDevice};
 pub use levels::LevelObservation;
 pub use output_device::OutputDevice;
+pub use track_reader::TrackReader;
