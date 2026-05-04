@@ -1,11 +1,11 @@
-use crate::audio::{AudioInput, LevelObservation};
+use crate::audio::{DeviceInfo, InputDevice, LevelObservation};
 use crate::channel::Channel;
 use crate::level_history::LevelHistory;
 use crate::meters::Meters;
 use crate::template::Template;
 
 pub struct Mixer {
-    pub audio_input: AudioInput,
+    pub input_device: InputDevice,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub channels: Vec<Channel>,
     pub meters: Meters,
@@ -13,14 +13,14 @@ pub struct Mixer {
 }
 
 impl Mixer {
-    pub fn start(
-        audio_input: AudioInput,
-        levels_consumer: rtrb::Consumer<LevelObservation>,
-    ) -> Self {
-        let n = audio_input.channel_count() as usize;
-        let channels = (0..audio_input.channel_count()).map(Channel::new).collect();
+    pub fn start(info: &DeviceInfo) -> Self {
+        let (input_device, levels_consumer) = InputDevice::start(info);
+        let n = input_device.channel_count() as usize;
+        let channels = (0..input_device.channel_count())
+            .map(Channel::new)
+            .collect();
         Mixer {
-            audio_input,
+            input_device,
             levels_consumer,
             channels,
             meters: Meters::new(n),
@@ -59,15 +59,15 @@ impl Mixer {
 
     pub fn evict_old_history(&mut self) {
         self.level_history.evict_old(
-            self.audio_input.sample_position(),
-            self.audio_input.sample_rate().0 as u64,
+            self.input_device.sample_position(),
+            self.input_device.sample_rate().0 as u64,
         );
     }
 
     pub fn snapshot_template(&self, name: &str) -> Template {
         Template {
             name: name.to_string(),
-            device_name: self.audio_input.device_name().to_string(),
+            device_name: self.input_device.name().to_string(),
             channels: self.channels.clone(),
         }
     }

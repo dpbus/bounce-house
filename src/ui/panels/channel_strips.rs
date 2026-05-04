@@ -38,7 +38,7 @@ impl ChannelStrips {
 
     pub fn draw(&self, frame: &mut Frame, area: Rect, app: &App) {
         let channels: Vec<&Channel> = app.mixer.channels.iter().filter(|c| c.armed).collect();
-        let total = app.mixer.audio_input.channel_count();
+        let total = app.mixer.input_device.channel_count();
 
         let block = Block::default()
             .borders(Borders::ALL)

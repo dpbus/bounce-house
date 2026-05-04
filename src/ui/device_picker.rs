@@ -6,7 +6,7 @@ use crossterm::event::{self, Event, KeyCode};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
-use crate::audio::Device;
+use crate::audio::DeviceInfo;
 use crate::ui::widgets::{key_hint, truncate_with_ellipsis};
 
 const MODAL_INNER_WIDTH: u16 = 50;
@@ -38,8 +38,8 @@ const INSTRUCTION: &str = "Select an input device to begin";
 /// - 2+ devices → renders a picker until the user selects with Enter
 pub fn pick(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    mut devices: Vec<Device>,
-) -> io::Result<Device> {
+    mut devices: Vec<DeviceInfo>,
+) -> io::Result<DeviceInfo> {
     if devices.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -80,7 +80,7 @@ pub fn pick(
     }
 }
 
-fn draw(frame: &mut Frame, devices: &[Device], cursor: usize) {
+fn draw(frame: &mut Frame, devices: &[DeviceInfo], cursor: usize) {
     // Full-screen border, matching the main app's outer chrome.
     let screen_block = Block::default()
         .borders(Borders::ALL)
@@ -138,7 +138,7 @@ fn status_bar_text() -> String {
     )
 }
 
-fn draw_modal(frame: &mut Frame, region: Rect, devices: &[Device], cursor: usize) {
+fn draw_modal(frame: &mut Frame, region: Rect, devices: &[DeviceInfo], cursor: usize) {
     let inner_height = devices.len() as u16 + 2; // list + spacer + footer
     let outer = center_rect(
         region,
@@ -198,7 +198,7 @@ fn draw_logo(frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), area);
 }
 
-fn draw_list(frame: &mut Frame, area: Rect, devices: &[Device], cursor: usize) {
+fn draw_list(frame: &mut Frame, area: Rect, devices: &[DeviceInfo], cursor: usize) {
     let total_width = area.width as usize;
     let lines: Vec<Line> = devices
         .iter()
@@ -208,12 +208,12 @@ fn draw_list(frame: &mut Frame, area: Rect, devices: &[Device], cursor: usize) {
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-fn device_row(dev: &Device, selected: bool, total_width: usize) -> Line<'static> {
-    let metadata = format!(
-        "{} ch · {} kHz",
-        dev.channel_count(),
-        dev.sample_rate().0 / 1000
-    );
+fn device_row(dev: &DeviceInfo, selected: bool, total_width: usize) -> Line<'static> {
+    let io_summary = match dev.output_channel_count() {
+        Some(out) => format!("{} in / {} out", dev.input_channel_count(), out),
+        None => format!("{} in", dev.input_channel_count()),
+    };
+    let metadata = format!("{} · {} kHz", io_summary, dev.input_sample_rate().0 / 1000);
     let bullet = if selected { "▌ " } else { "  " };
     let bullet_color = if selected {
         Color::Cyan

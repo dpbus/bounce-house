@@ -1,54 +1,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 
-use cpal::traits::StreamTrait;
-
-use crate::audio::Device;
 use crate::audio::levels::{LevelObservation, MAX_CHANNELS};
-use crate::units::SampleRate;
-
-const RECORDING_BUFFER_SECONDS: usize = 10;
 
 /// ~10s of headroom at typical macOS callback rates (~93 Hz).
-const LEVEL_BUFFER_CAPACITY: usize = 1000;
+pub(super) const LEVEL_BUFFER_CAPACITY: usize = 1000;
 
-/// UI-side handle for the audio input device. Owns the cpal input
-/// stream, shares atomic state with the audio thread, and sends
-/// control commands.
-pub struct AudioInput {
-    _stream: cpal::Stream,
-    device: Device,
-    sample_position: Arc<AtomicU64>,
-    cmd_tx: Sender<Command>,
-}
-
-/// Control side of an attached consumer. Returned alongside the
-/// `Consumer` from `attach_consumer`. Lets the attached party pause/
-/// resume the audio thread's pushes and detach when done — without
-/// holding a reference back to AudioInput.
-pub struct ConsumerControl {
-    pause_signal: Arc<AtomicBool>,
-    cmd_tx: Sender<Command>,
-}
-
-impl ConsumerControl {
-    pub fn pause(&self) {
-        self.pause_signal.store(true, Ordering::Relaxed);
-    }
-
-    pub fn resume(&self) {
-        self.pause_signal.store(false, Ordering::Relaxed);
-    }
-
-    pub fn detach(self) {
-        let (ack_tx, ack_rx) = mpsc::channel::<()>();
-        let _ = self.cmd_tx.send(Command::DetachConsumer { ack_tx });
-        let _ = ack_rx.recv();
-    }
-}
-
-enum Command {
+pub(super) enum Command {
     AttachConsumer {
         producer: rtrb::Producer<f32>,
         pause_signal: Arc<AtomicBool>,
@@ -58,102 +17,23 @@ enum Command {
     },
 }
 
+pub(super) struct ConsumerAttachment {
+    pub producer: rtrb::Producer<f32>,
+    pub pause_signal: Arc<AtomicBool>,
+}
+
 /// Audio-thread state. Lives in the cpal callback closure; owns working
 /// buffers and producers, reads atomics shared with the handle.
-struct InputCallback {
-    sample_position: Arc<AtomicU64>,
-    total_channel_count: usize,
-    peaks_buf: Vec<f32>,
-    consumer_attachment: Option<ConsumerAttachment>,
-    levels_producer: rtrb::Producer<LevelObservation>,
-}
-
-struct ConsumerAttachment {
-    producer: rtrb::Producer<f32>,
-    pause_signal: Arc<AtomicBool>,
-}
-
-impl AudioInput {
-    pub fn start(device: Device) -> (Self, rtrb::Consumer<LevelObservation>) {
-        let total_channel_count = device.channel_count() as usize;
-        assert!(
-            total_channel_count <= MAX_CHANNELS,
-            "device has {total_channel_count} channels; MAX_CHANNELS={MAX_CHANNELS}",
-        );
-        let sample_position = Arc::new(AtomicU64::new(0));
-        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
-        let (levels_producer, levels_consumer) =
-            rtrb::RingBuffer::<LevelObservation>::new(LEVEL_BUFFER_CAPACITY);
-
-        let mut callback = InputCallback {
-            sample_position: sample_position.clone(),
-            total_channel_count,
-            peaks_buf: vec![0.0; total_channel_count],
-            consumer_attachment: None,
-            levels_producer,
-        };
-
-        let stream = device.build_input_stream(move |data: &[f32]| {
-            callback.drain_commands(&cmd_rx);
-            let frames = callback.scan_peaks(data);
-            let callback_start_sample = callback.advance_sample_position(frames);
-            callback.publish_observation(callback_start_sample);
-            callback.push_raw_if_attached(data);
-        });
-
-        stream.play().expect("Failed to start audio stream");
-
-        let handle = AudioInput {
-            _stream: stream,
-            device,
-            sample_position,
-            cmd_tx,
-        };
-        (handle, levels_consumer)
-    }
-
-    pub fn device_name(&self) -> &str {
-        self.device.name()
-    }
-
-    pub fn channel_count(&self) -> u16 {
-        self.device.channel_count()
-    }
-
-    pub fn sample_rate(&self) -> SampleRate {
-        self.device.sample_rate()
-    }
-
-    pub fn sample_position(&self) -> u64 {
-        self.sample_position.load(Ordering::Relaxed)
-    }
-
-    pub(crate) fn sample_position_atomic(&self) -> Arc<AtomicU64> {
-        Arc::clone(&self.sample_position)
-    }
-
-    pub fn attach_consumer(&self) -> (rtrb::Consumer<f32>, ConsumerControl) {
-        let total_samples_buffer = self.channel_count() as usize
-            * self.sample_rate().0 as usize
-            * RECORDING_BUFFER_SECONDS;
-        let (producer, consumer) = rtrb::RingBuffer::new(total_samples_buffer);
-        let pause_signal = Arc::new(AtomicBool::new(false));
-        self.cmd_tx
-            .send(Command::AttachConsumer {
-                producer,
-                pause_signal: pause_signal.clone(),
-            })
-            .expect("audio thread dropped");
-        let control = ConsumerControl {
-            pause_signal,
-            cmd_tx: self.cmd_tx.clone(),
-        };
-        (consumer, control)
-    }
+pub(super) struct InputCallback {
+    pub sample_position: Arc<AtomicU64>,
+    pub total_channel_count: usize,
+    pub peaks_buf: Vec<f32>,
+    pub consumer_attachment: Option<ConsumerAttachment>,
+    pub levels_producer: rtrb::Producer<LevelObservation>,
 }
 
 impl InputCallback {
-    fn drain_commands(&mut self, cmd_rx: &Receiver<Command>) {
+    pub fn drain_commands(&mut self, cmd_rx: &Receiver<Command>) {
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
                 Command::AttachConsumer {
@@ -175,7 +55,7 @@ impl InputCallback {
 
     /// Per-channel absolute peak across the callback. Fills `peaks_buf`
     /// and returns the frame count.
-    fn scan_peaks(&mut self, data: &[f32]) -> usize {
+    pub fn scan_peaks(&mut self, data: &[f32]) -> usize {
         self.peaks_buf.fill(0.0);
         let frames = data.len() / self.total_channel_count;
         for frame in 0..frames {
@@ -189,14 +69,14 @@ impl InputCallback {
         frames
     }
 
-    fn advance_sample_position(&self, frames: usize) -> u64 {
+    pub fn advance_sample_position(&self, frames: usize) -> u64 {
         self.sample_position
             .fetch_add(frames as u64, Ordering::Relaxed)
     }
 
     /// One push per callback. Backpressure drops silently; UI lag must
     /// not affect capture.
-    fn publish_observation(&mut self, callback_start_sample: u64) {
+    pub fn publish_observation(&mut self, callback_start_sample: u64) {
         let mut channel_peaks = [0.0f32; MAX_CHANNELS];
         channel_peaks[..self.total_channel_count].copy_from_slice(&self.peaks_buf);
         let _ = self.levels_producer.push(LevelObservation {
@@ -205,22 +85,7 @@ impl InputCallback {
         });
     }
 
-    #[cfg(test)]
-    fn for_test(channel_count: usize) -> (Self, rtrb::Consumer<LevelObservation>) {
-        let sample_position = Arc::new(AtomicU64::new(0));
-        let (levels_producer, levels_consumer) =
-            rtrb::RingBuffer::<LevelObservation>::new(LEVEL_BUFFER_CAPACITY);
-        let callback = InputCallback {
-            sample_position,
-            total_channel_count: channel_count,
-            peaks_buf: vec![0.0; channel_count],
-            consumer_attachment: None,
-            levels_producer,
-        };
-        (callback, levels_consumer)
-    }
-
-    fn push_raw_if_attached(&mut self, data: &[f32]) {
+    pub fn push_raw_if_attached(&mut self, data: &[f32]) {
         let Some(attachment) = &mut self.consumer_attachment else {
             return;
         };
@@ -237,10 +102,27 @@ impl InputCallback {
         slice2.copy_from_slice(&data[split..]);
         chunk.commit_all();
     }
+
+    #[cfg(test)]
+    pub fn for_test(channel_count: usize) -> (Self, rtrb::Consumer<LevelObservation>) {
+        let sample_position = Arc::new(AtomicU64::new(0));
+        let (levels_producer, levels_consumer) =
+            rtrb::RingBuffer::<LevelObservation>::new(LEVEL_BUFFER_CAPACITY);
+        let callback = InputCallback {
+            sample_position,
+            total_channel_count: channel_count,
+            peaks_buf: vec![0.0; channel_count],
+            consumer_attachment: None,
+            levels_producer,
+        };
+        (callback, levels_consumer)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+
     use super::*;
 
     fn attach_for_test(callback: &mut InputCallback, paused: bool) -> rtrb::Consumer<f32> {
@@ -348,5 +230,28 @@ mod tests {
         assert_eq!(obs.channel_peaks[1], 0.7);
         // Channels past total_channel_count remain at default zero.
         assert_eq!(obs.channel_peaks[2], 0.0);
+    }
+
+    // Use mpsc to make the import non-dead in tests.
+    #[test]
+    fn drain_commands_processes_attach_then_detach() {
+        let (mut callback, _) = InputCallback::for_test(2);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
+        let (producer, _consumer) = rtrb::RingBuffer::<f32>::new(64);
+        let pause_signal = Arc::new(AtomicBool::new(false));
+        cmd_tx
+            .send(Command::AttachConsumer {
+                producer,
+                pause_signal,
+            })
+            .unwrap();
+        callback.drain_commands(&cmd_rx);
+        assert!(callback.consumer_attachment.is_some());
+
+        let (ack_tx, ack_rx) = mpsc::channel::<()>();
+        cmd_tx.send(Command::DetachConsumer { ack_tx }).unwrap();
+        callback.drain_commands(&cmd_rx);
+        assert!(callback.consumer_attachment.is_none());
+        assert!(ack_rx.try_recv().is_ok());
     }
 }

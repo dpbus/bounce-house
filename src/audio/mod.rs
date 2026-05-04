@@ -1,19 +1,12 @@
-mod device;
+mod device_info;
 mod disk_writer;
 #[cfg(debug_assertions)]
 mod fake;
-mod input;
+mod input_callback;
+mod input_device;
 mod levels;
 
-pub use device::Device;
+pub use device_info::DeviceInfo;
 pub use disk_writer::{ChannelOutput, DiskWriter};
-pub use input::{AudioInput, ConsumerControl};
+pub use input_device::{ConsumerControl, InputDevice};
 pub use levels::LevelObservation;
-
-pub fn list_devices() -> Vec<Device> {
-    #[allow(unused_mut)]
-    let mut devices = Device::list(&cpal::default_host());
-    #[cfg(debug_assertions)]
-    devices.extend(fake::devices());
-    devices
-}

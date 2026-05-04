@@ -69,7 +69,7 @@ impl Transport {
         mixer: &Mixer,
     ) -> Result<(), CaptureError> {
         let armed: Vec<_> = mixer.armed_channels().cloned().collect();
-        let capture = Capture::start(&mixer.audio_input, session, &armed)?;
+        let capture = Capture::start(&mixer.input_device, session, &armed)?;
         self.runtime_mode = RuntimeMode::Recording(capture);
         Ok(())
     }

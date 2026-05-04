@@ -12,7 +12,8 @@ use cpal::{
     SupportedStreamConfigRange,
 };
 
-use crate::audio::Device;
+use crate::audio::DeviceInfo;
+use crate::units::SampleRate;
 use signal::Signal;
 
 const SAMPLE_RATE: u32 = 48_000;
@@ -21,14 +22,17 @@ const PRESET_CHANNEL_COUNTS: &[u16] = &[2, 16, 65];
 
 /// Synthetic input devices added to the picker in debug builds. Useful
 /// for previewing the UI with N channels on a dev machine without an
-/// audio interface.
-pub fn devices() -> Vec<Device> {
+/// audio interface. Output is unsupported (None) — fake devices are
+/// input-only.
+pub fn devices() -> Vec<DeviceInfo> {
     PRESET_CHANNEL_COUNTS
         .iter()
         .map(|&n| {
             let fake = FakeDevice { channel_count: n };
             let custom = cpal::platform::CustomDevice::from_device(fake);
-            Device::from_cpal(cpal::Device::from(custom))
+            let cpal_device = cpal::Device::from(custom);
+            let label = format!("Fake ({} ch)", n);
+            DeviceInfo::from_parts(cpal_device, label, n, SampleRate(SAMPLE_RATE), None)
         })
         .collect()
 }

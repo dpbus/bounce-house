@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::audio::{AudioInput, ChannelOutput, ConsumerControl, DiskWriter};
+use crate::audio::{ChannelOutput, ConsumerControl, DiskWriter, InputDevice};
 use crate::channel::Channel;
 use crate::session::Session;
 
@@ -22,7 +22,7 @@ pub struct Capture {
 
 impl Capture {
     pub fn start(
-        audio_input: &AudioInput,
+        input_device: &InputDevice,
         session: &mut Session,
         armed_channels: &[Channel],
     ) -> Result<Self, CaptureError> {
@@ -44,13 +44,13 @@ impl Capture {
             }
         }
 
-        let start_sample = audio_input.sample_position();
-        let audio_input_position = audio_input.sample_position_atomic();
-        let (consumer, consumer_control) = audio_input.attach_consumer();
+        let start_sample = input_device.sample_position();
+        let audio_input_position = input_device.sample_position_atomic();
+        let (consumer, consumer_control) = input_device.attach_consumer();
         let writer = DiskWriter::start(
             consumer,
-            audio_input.sample_rate(),
-            audio_input.channel_count(),
+            input_device.sample_rate(),
+            input_device.channel_count(),
             outputs,
         );
 

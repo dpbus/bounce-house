@@ -51,7 +51,7 @@ fn bootstrap(
     settings: Settings,
     template: Option<Template>,
 ) -> io::Result<()> {
-    let devices = audio::list_devices();
+    let devices = audio::DeviceInfo::list();
     let device = match device_picker::pick(terminal, devices) {
         Ok(d) => d,
         Err(e) if e.kind() == io::ErrorKind::Interrupted => return Ok(()),

@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::audio::{AudioInput, Device};
+use crate::audio::DeviceInfo;
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::CaptureError;
 use crate::mixer::Mixer;
@@ -32,13 +32,12 @@ impl From<CaptureError> for AppError {
 }
 
 impl App {
-    pub fn new(device: Device, settings: Settings) -> Self {
-        let (audio_input, levels_consumer) = AudioInput::start(device);
-        let session = Session::new(audio_input.sample_rate(), &settings);
+    pub fn new(info: DeviceInfo, settings: Settings) -> Self {
+        let session = Session::new(info.input_sample_rate(), &settings);
         App {
             settings,
             session,
-            mixer: Mixer::start(audio_input, levels_consumer),
+            mixer: Mixer::start(&info),
             transport: Transport::new(),
             bounce_pool: BouncePool::start(),
         }
