@@ -6,6 +6,7 @@ mod input_callback;
 mod input_device;
 mod levels;
 mod output_device;
+mod track_reader;
 
 pub use device_info::DeviceInfo;
 pub use disk_writer::{ChannelOutput, DiskWriter};
