@@ -1,12 +1,14 @@
 use std::io;
 
 use crate::app::{App, AppError};
+use crate::playback::Playback;
 use crate::template::Template;
 
 pub enum Action {
     StartRecording,
     StopRecording,
     TogglePause,
+    TogglePlayback,
     DropMarker,
     DeleteLastMarker,
     CreateTake(String),
@@ -40,6 +42,7 @@ pub fn dispatch(action: Action, app: &mut App) -> Result<(), DispatchError> {
         Action::StartRecording => app.start_recording()?,
         Action::StopRecording => app.stop_recording(),
         Action::TogglePause => app.toggle_pause(),
+        Action::TogglePlayback => toggle_playback(app),
         Action::DropMarker => app.drop_marker(),
         Action::DeleteLastMarker => app.delete_last_marker(),
         Action::CreateTake(name) => app.create_take(&name),
@@ -56,4 +59,18 @@ pub fn dispatch(action: Action, app: &mut App) -> Result<(), DispatchError> {
 /// doesn't need to know whether the action succeeded.
 pub fn fire(action: Action, app: &mut App) {
     let _ = dispatch(action, app);
+}
+
+fn toggle_playback(app: &mut App) {
+    if app.playing.is_some() {
+        app.playing = None;
+        return;
+    }
+    if !app.session.has_recording() {
+        return;
+    }
+    let Some(output_device) = &app.mixer.output_device else {
+        return;
+    };
+    app.playing = Some(Playback::start(output_device, &app.session));
 }

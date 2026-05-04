@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::audio::{OutputDevice, TrackReader};
 use crate::session::Session;
 

@@ -30,6 +30,7 @@ enum KeyAction {
     OpenConfirmQuit,
     OpenChannelPicker,
     CycleWaveformWindow,
+    TogglePlayback,
     DropMarker,
     MarkAndOpenTakeNaming,
     OpenRetroactiveTakeNaming,
@@ -84,6 +85,7 @@ fn decide_with_state(state: RecordingState, key: KeyEvent) -> KeyAction {
             Char(',') => KeyAction::OpenSettings,
             Char('q') | Char('Q') | Esc => KeyAction::OpenConfirmQuit,
             Char('r') | Char('R') => KeyAction::StartRecording,
+            Char(' ') => KeyAction::TogglePlayback,
             Char('c') | Char('C') => KeyAction::OpenChannelPicker,
             Char('w') | Char('W') => KeyAction::CycleWaveformWindow,
             Char('n') | Char('N') => KeyAction::OpenRetroactiveTakeNaming,
@@ -102,6 +104,7 @@ fn apply(app: &mut App, view: &mut View, action: KeyAction) {
         KeyAction::OpenConfirmStop => view.open_confirm_stop(),
         KeyAction::OpenConfirmQuit => view.open_confirm_quit(),
         KeyAction::CycleWaveformWindow => fire(Action::CycleWaveformWindow, app),
+        KeyAction::TogglePlayback => fire(Action::TogglePlayback, app),
         KeyAction::DropMarker => fire(Action::DropMarker, app),
         KeyAction::MarkAndOpenTakeNaming => {
             fire(Action::DropMarker, app);

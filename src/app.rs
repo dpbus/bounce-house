@@ -4,6 +4,7 @@ use crate::audio::DeviceInfo;
 use crate::bounce::{BounceJob, BouncePool};
 use crate::capture::CaptureError;
 use crate::mixer::Mixer;
+use crate::playback::Playback;
 use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
@@ -15,6 +16,9 @@ pub struct App {
     pub mixer: Mixer,
     pub transport: Transport,
     pub bounce_pool: BouncePool,
+    /// Throwaway smoke-test field — Step 5 will move playback under
+    /// transport's RuntimeMode and delete this.
+    pub playing: Option<Playback>,
 }
 
 #[derive(Debug)]
@@ -40,6 +44,7 @@ impl App {
             mixer: Mixer::start(&info),
             transport: Transport::new(),
             bounce_pool: BouncePool::start(),
+            playing: None,
         }
     }
 

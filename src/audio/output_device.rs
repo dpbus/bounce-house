@@ -1,8 +1,7 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use cpal::traits::{DeviceTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-use crate::audio::DeviceInfo;
 use crate::units::SampleRate;
 
 const PLAYBACK_BUFFER_SECONDS: usize = 10;
@@ -16,11 +15,15 @@ pub struct OutputDevice {
 }
 
 impl OutputDevice {
-    /// `None` when the device doesn't expose an output config (e.g.,
-    /// debug fake devices).
-    pub fn start(info: &DeviceInfo) -> Option<Self> {
-        let cpal_device = info.cpal_device.clone();
-        let name = info.name.clone();
+    /// Opens the host's default output device. Independent of the input
+    /// device choice — temporary until the Settings picker grows separate
+    /// input/output selection.
+    pub fn start() -> Option<Self> {
+        let cpal_device = cpal::default_host().default_output_device()?;
+        let name = cpal_device
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
         let output_config: cpal::StreamConfig = cpal_device.default_output_config().ok()?.into();
         let channel_count = output_config.channels;
         let sample_rate = SampleRate(output_config.sample_rate);

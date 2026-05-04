@@ -7,7 +7,6 @@ use crate::template::Template;
 pub struct Mixer {
     pub input_device: InputDevice,
     /// `None` for input-only devices (debug fakes).
-    #[allow(dead_code)]
     pub output_device: Option<OutputDevice>,
     pub levels_consumer: rtrb::Consumer<LevelObservation>,
     pub channels: Vec<Channel>,
@@ -18,7 +17,7 @@ pub struct Mixer {
 impl Mixer {
     pub fn start(info: &DeviceInfo) -> Self {
         let (input_device, levels_consumer) = InputDevice::start(info);
-        let output_device = OutputDevice::start(info);
+        let output_device = OutputDevice::start();
         let n = input_device.channel_count() as usize;
         let channels = (0..input_device.channel_count())
             .map(Channel::new)
