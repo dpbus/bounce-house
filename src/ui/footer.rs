@@ -2,7 +2,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
 use crate::app::App;
-use crate::transport::RecordingState;
+use crate::transport::TransportMode;
 use crate::ui::view::View;
 use crate::ui::widgets::{key_hint, key_hint_when};
 
@@ -33,8 +33,8 @@ fn left(app: &App, view: &View) -> Line<'static> {
         return confirm_overlay_line("Quit?");
     }
     let mut spans = Vec::new();
-    match app.transport.recording_state() {
-        RecordingState::Recording => {
+    match app.transport.mode() {
+        TransportMode::Recording => {
             let last_unbound = app.has_unbound_marker();
             spans.extend(key_hint("T", "take  ", Color::Cyan));
             spans.extend(key_hint("Space", "mark  ", Color::Cyan));
@@ -48,7 +48,7 @@ fn left(app: &App, view: &View) -> Line<'static> {
             spans.extend(key_hint("P", "pause  ", Color::Cyan));
             spans.extend(key_hint("Esc", "stop", Color::Cyan));
         }
-        RecordingState::Paused => {
+        TransportMode::Paused => {
             let last_unbound = app.has_unbound_marker();
             spans.extend(key_hint_when(false, "T", "take  ", Color::Cyan));
             spans.extend(key_hint_when(false, "Space", "mark  ", Color::Cyan));
@@ -62,11 +62,17 @@ fn left(app: &App, view: &View) -> Line<'static> {
             spans.extend(key_hint("P", "resume  ", Color::Cyan));
             spans.extend(key_hint("Esc", "stop", Color::Cyan));
         }
-        RecordingState::Idle => {
+        TransportMode::Idle => {
             spans.extend(key_hint_when(
                 app.mixer.armed_channels().next().is_some(),
                 "R",
                 "record  ",
+                Color::Cyan,
+            ));
+            spans.extend(key_hint_when(
+                app.session.has_recording(),
+                "Space",
+                "play  ",
                 Color::Cyan,
             ));
             spans.extend(key_hint_when(
@@ -76,12 +82,15 @@ fn left(app: &App, view: &View) -> Line<'static> {
                 Color::Cyan,
             ));
         }
+        TransportMode::Playing => {
+            spans.extend(key_hint("Space", "stop", Color::Cyan));
+        }
     }
     Line::from(spans)
 }
 
 fn right(app: &App, view: &View) -> Line<'static> {
-    let quit_actionable = !app.transport.is_recording()
+    let quit_actionable = app.transport.is_idle()
         && view.take_naming().is_none()
         && !view.confirm_stop_active()
         && !view.confirm_quit_active();

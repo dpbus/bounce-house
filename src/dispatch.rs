@@ -1,7 +1,6 @@
 use std::io;
 
 use crate::app::{App, AppError};
-use crate::playback::Playback;
 use crate::template::Template;
 
 pub enum Action {
@@ -62,15 +61,9 @@ pub fn fire(action: Action, app: &mut App) {
 }
 
 fn toggle_playback(app: &mut App) {
-    if app.playing.is_some() {
-        app.playing = None;
+    if app.transport.is_playing() {
+        app.transport.stop_playback();
         return;
     }
-    if !app.session.has_recording() {
-        return;
-    }
-    let Some(output_device) = &app.mixer.output_device else {
-        return;
-    };
-    app.playing = Some(Playback::start(output_device, &app.session));
+    let _ = app.transport.start_playback(&app.session, &app.mixer);
 }

@@ -2,13 +2,11 @@ use std::io;
 
 use crate::audio::DeviceInfo;
 use crate::bounce::{BounceJob, BouncePool};
-use crate::capture::CaptureError;
 use crate::mixer::Mixer;
-use crate::playback::Playback;
 use crate::session::Session;
 use crate::settings::Settings;
 use crate::template::{self, Template};
-use crate::transport::Transport;
+use crate::transport::{RecordingError, Transport};
 
 pub struct App {
     pub settings: Settings,
@@ -16,9 +14,6 @@ pub struct App {
     pub mixer: Mixer,
     pub transport: Transport,
     pub bounce_pool: BouncePool,
-    /// Throwaway smoke-test field — Step 5 will move playback under
-    /// transport's RuntimeMode and delete this.
-    pub playing: Option<Playback>,
 }
 
 #[derive(Debug)]
@@ -27,10 +22,11 @@ pub enum AppError {
     NotIdle,
 }
 
-impl From<CaptureError> for AppError {
-    fn from(err: CaptureError) -> Self {
+impl From<RecordingError> for AppError {
+    fn from(err: RecordingError) -> Self {
         match err {
-            CaptureError::NothingArmed => AppError::NothingArmed,
+            RecordingError::NotIdle => AppError::NotIdle,
+            RecordingError::NothingArmed => AppError::NothingArmed,
         }
     }
 }
@@ -44,7 +40,6 @@ impl App {
             mixer: Mixer::start(&info),
             transport: Transport::new(),
             bounce_pool: BouncePool::start(),
-            playing: None,
         }
     }
 
@@ -73,9 +68,6 @@ impl App {
     }
 
     pub fn start_recording(&mut self) -> Result<(), AppError> {
-        if !self.transport.is_idle() {
-            return Err(AppError::NotIdle);
-        }
         if self.session.has_recording() {
             self.session = self.session.fork_for_new_recording(&self.settings);
         }

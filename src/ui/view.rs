@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, Padding};
 
 use crate::app::App;
 use crate::dispatch::{Action, fire};
-use crate::transport::RecordingState;
+use crate::transport::TransportMode;
 use crate::ui::ChannelStrips;
 use crate::ui::ModalOutcome;
 use crate::ui::footer;
@@ -233,16 +233,25 @@ fn dim_buffer(frame: &mut Frame) {
 }
 
 fn outer_block(app: &App) -> Block<'static> {
-    let (title, color) = match app.transport.recording_state() {
-        RecordingState::Recording => (
+    let (title, color) = match app.transport.mode() {
+        TransportMode::Recording => (
             format!(" ● Recording — {} ", app.mixer.input_device.name()),
             Color::Red,
         ),
-        RecordingState::Paused => (
+        TransportMode::Paused => (
             format!(" ⏸ Paused — {} ", app.mixer.input_device.name()),
             Color::Yellow,
         ),
-        RecordingState::Idle => (format!(" {} ", app.mixer.input_device.name()), Color::Cyan),
+        TransportMode::Playing => {
+            let name = app
+                .mixer
+                .output_device
+                .as_ref()
+                .expect("Playing requires output_device")
+                .name();
+            (format!(" ▶ Playing — {name} "), Color::Green)
+        }
+        TransportMode::Idle => (format!(" {} ", app.mixer.input_device.name()), Color::Cyan),
     };
     Block::default()
         .title(title)

@@ -6,7 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::App;
 use crate::timeline::{BounceStatus, Take, Timeline};
-use crate::transport::RecordingState;
+use crate::transport::TransportMode;
 use crate::ui::view::View;
 use crate::ui::widgets::{
     dim_status, input_with_cursor, key_hint, mmss, panel, spinner_glyph, take_color,
@@ -118,7 +118,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, view: &View) {
         .rel_sample_position()
         .map(|rel| timeline.since_last_marker_secs(rel))
         .unwrap_or(0);
-    grid[layout.now_row] = now_line(layout.now_sec, since_secs, app.transport.recording_state());
+    grid[layout.now_row] = now_line(layout.now_sec, since_secs, app.transport.mode());
 
     frame.render_widget(Paragraph::new(grid), inner);
 }
@@ -413,19 +413,25 @@ fn view_top_boundary_line(secs: u64) -> Line<'static> {
     ))
 }
 
-fn now_line(now_sec: u64, since_secs: u64, state: RecordingState) -> Line<'static> {
-    let (glyph, clock_style) = match state {
-        RecordingState::Recording => (
+fn now_line(now_sec: u64, since_secs: u64, mode: TransportMode) -> Line<'static> {
+    let (glyph, clock_style) = match mode {
+        TransportMode::Recording => (
             "●",
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ),
-        RecordingState::Paused => (
+        TransportMode::Paused => (
             "⏸",
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ),
-        RecordingState::Idle => ("■", Style::default().fg(Color::DarkGray)),
+        TransportMode::Playing => (
+            "▶",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        TransportMode::Idle => ("■", Style::default().fg(Color::DarkGray)),
     };
     let clock_text = format!("{} {}", glyph, mmss(now_sec));
     let since_text = format!("+{}", mmss(since_secs));

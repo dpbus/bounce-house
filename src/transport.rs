@@ -1,57 +1,94 @@
 use crate::capture::{Capture, CaptureError};
 use crate::mixer::Mixer;
+use crate::playback::Playback;
 use crate::session::Session;
 
 pub struct Transport {
-    pub runtime_mode: RuntimeMode,
+    state: TransportState,
 }
 
-pub enum RuntimeMode {
+pub enum TransportState {
     Idle,
     Recording(Capture),
+    Playing(Playback),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RecordingState {
+pub enum TransportMode {
     Idle,
     Recording,
     Paused,
+    Playing,
+}
+
+#[derive(Debug)]
+pub enum RecordingError {
+    NotIdle,
+    NothingArmed,
+}
+
+impl From<CaptureError> for RecordingError {
+    fn from(e: CaptureError) -> Self {
+        match e {
+            CaptureError::NothingArmed => RecordingError::NothingArmed,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum PlaybackError {
+    NotIdle,
+    NoRecording,
+    NoOutput,
 }
 
 impl Transport {
     pub fn new() -> Self {
         Transport {
-            runtime_mode: RuntimeMode::Idle,
+            state: TransportState::Idle,
         }
     }
 
     pub fn is_idle(&self) -> bool {
-        matches!(self.runtime_mode, RuntimeMode::Idle)
+        matches!(self.state, TransportState::Idle)
     }
 
     pub fn is_recording(&self) -> bool {
-        matches!(self.runtime_mode, RuntimeMode::Recording(_))
+        matches!(self.state, TransportState::Recording(_))
+    }
+
+    pub fn is_playing(&self) -> bool {
+        matches!(self.state, TransportState::Playing(_))
     }
 
     pub fn capture(&self) -> Option<&Capture> {
-        match &self.runtime_mode {
-            RuntimeMode::Recording(c) => Some(c),
-            RuntimeMode::Idle => None,
+        match &self.state {
+            TransportState::Recording(c) => Some(c),
+            _ => None,
         }
     }
 
     pub fn capture_mut(&mut self) -> Option<&mut Capture> {
-        match &mut self.runtime_mode {
-            RuntimeMode::Recording(c) => Some(c),
-            RuntimeMode::Idle => None,
+        match &mut self.state {
+            TransportState::Recording(c) => Some(c),
+            _ => None,
         }
     }
 
-    pub fn recording_state(&self) -> RecordingState {
-        match self.capture() {
-            Some(c) if c.is_paused() => RecordingState::Paused,
-            Some(_) => RecordingState::Recording,
-            None => RecordingState::Idle,
+    #[allow(dead_code)]
+    pub fn playback(&self) -> Option<&Playback> {
+        match &self.state {
+            TransportState::Playing(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn mode(&self) -> TransportMode {
+        match &self.state {
+            TransportState::Idle => TransportMode::Idle,
+            TransportState::Recording(c) if c.is_paused() => TransportMode::Paused,
+            TransportState::Recording(_) => TransportMode::Recording,
+            TransportState::Playing(_) => TransportMode::Playing,
         }
     }
 
@@ -67,10 +104,13 @@ impl Transport {
         &mut self,
         session: &mut Session,
         mixer: &Mixer,
-    ) -> Result<(), CaptureError> {
+    ) -> Result<(), RecordingError> {
+        if !self.is_idle() {
+            return Err(RecordingError::NotIdle);
+        }
         let armed: Vec<_> = mixer.armed_channels().cloned().collect();
         let capture = Capture::start(&mixer.input_device, session, &armed)?;
-        self.runtime_mode = RuntimeMode::Recording(capture);
+        self.state = TransportState::Recording(capture);
         Ok(())
     }
 
@@ -91,10 +131,37 @@ impl Transport {
         }
     }
 
+    pub fn start_playback(
+        &mut self,
+        session: &Session,
+        mixer: &Mixer,
+    ) -> Result<(), PlaybackError> {
+        if !self.is_idle() {
+            return Err(PlaybackError::NotIdle);
+        }
+        if !session.has_recording() {
+            return Err(PlaybackError::NoRecording);
+        }
+        let Some(output_device) = &mixer.output_device else {
+            return Err(PlaybackError::NoOutput);
+        };
+        self.state = TransportState::Playing(Playback::start(output_device, session));
+        Ok(())
+    }
+
+    pub fn stop_playback(&mut self) {
+        if matches!(self.state, TransportState::Playing(_)) {
+            self.state = TransportState::Idle;
+        }
+    }
+
     fn take_capture(&mut self) -> Option<Capture> {
-        match std::mem::replace(&mut self.runtime_mode, RuntimeMode::Idle) {
-            RuntimeMode::Recording(c) => Some(c),
-            RuntimeMode::Idle => None,
+        match std::mem::replace(&mut self.state, TransportState::Idle) {
+            TransportState::Recording(c) => Some(c),
+            other => {
+                self.state = other;
+                None
+            }
         }
     }
 }

@@ -11,7 +11,27 @@ pub struct OutputDevice {
     name: String,
     channel_count: u16,
     sample_rate: SampleRate,
-    cmd_tx: Sender<rtrb::Consumer<f32>>,
+    cmd_tx: Sender<Command>,
+}
+
+enum Command {
+    Attach(rtrb::Consumer<f32>),
+    Detach,
+}
+
+/// Returned alongside the producer from `attach_producer`. Lets the
+/// attached party tell the audio thread to release its consumer
+/// immediately — without that signal the callback would keep draining
+/// queued samples until empty (which is the right behavior for natural
+/// end-of-stream, but not for explicit stop).
+pub struct ProducerControl {
+    cmd_tx: Sender<Command>,
+}
+
+impl ProducerControl {
+    pub fn detach(self) {
+        let _ = self.cmd_tx.send(Command::Detach);
+    }
 }
 
 impl OutputDevice {
@@ -28,7 +48,7 @@ impl OutputDevice {
         let channel_count = output_config.channels;
         let sample_rate = SampleRate(output_config.sample_rate);
 
-        let (cmd_tx, cmd_rx) = mpsc::channel::<rtrb::Consumer<f32>>();
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
         let mut callback = OutputCallback { consumer: None };
 
         let stream = cpal_device
@@ -53,7 +73,6 @@ impl OutputDevice {
         })
     }
 
-    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -67,12 +86,17 @@ impl OutputDevice {
         self.sample_rate
     }
 
-    pub fn attach_producer(&self) -> rtrb::Producer<f32> {
+    pub fn attach_producer(&self) -> (rtrb::Producer<f32>, ProducerControl) {
         let buffer_samples =
             self.channel_count as usize * self.sample_rate.0 as usize * PLAYBACK_BUFFER_SECONDS;
         let (producer, consumer) = rtrb::RingBuffer::<f32>::new(buffer_samples);
-        self.cmd_tx.send(consumer).expect("audio thread dropped");
-        producer
+        self.cmd_tx
+            .send(Command::Attach(consumer))
+            .expect("audio thread dropped");
+        let control = ProducerControl {
+            cmd_tx: self.cmd_tx.clone(),
+        };
+        (producer, control)
     }
 }
 
@@ -81,9 +105,12 @@ struct OutputCallback {
 }
 
 impl OutputCallback {
-    fn drain_commands(&mut self, cmd_rx: &Receiver<rtrb::Consumer<f32>>) {
-        while let Ok(consumer) = cmd_rx.try_recv() {
-            self.consumer = Some(consumer);
+    fn drain_commands(&mut self, cmd_rx: &Receiver<Command>) {
+        while let Ok(cmd) = cmd_rx.try_recv() {
+            match cmd {
+                Command::Attach(consumer) => self.consumer = Some(consumer),
+                Command::Detach => self.consumer = None,
+            }
         }
     }
 
@@ -116,11 +143,7 @@ impl OutputCallback {
 mod tests {
     use super::*;
 
-    fn fresh_callback() -> (
-        OutputCallback,
-        Sender<rtrb::Consumer<f32>>,
-        Receiver<rtrb::Consumer<f32>>,
-    ) {
+    fn fresh_callback() -> (OutputCallback, Sender<Command>, Receiver<Command>) {
         let (tx, rx) = mpsc::channel();
         (OutputCallback { consumer: None }, tx, rx)
     }
@@ -141,7 +164,7 @@ mod tests {
         for i in 1..=4 {
             producer.push(i as f32).unwrap();
         }
-        tx.send(consumer).unwrap();
+        tx.send(Command::Attach(consumer)).unwrap();
         callback.drain_commands(&rx);
 
         let mut buf = vec![99.0; 8];
@@ -154,7 +177,7 @@ mod tests {
         let (mut callback, tx, rx) = fresh_callback();
         let (mut producer, consumer) = rtrb::RingBuffer::<f32>::new(16);
         producer.push(0.5).unwrap();
-        tx.send(consumer).unwrap();
+        tx.send(Command::Attach(consumer)).unwrap();
         callback.drain_commands(&rx);
         drop(producer);
 
@@ -171,7 +194,7 @@ mod tests {
         for i in 1..=8 {
             producer.push(i as f32).unwrap();
         }
-        tx.send(consumer).unwrap();
+        tx.send(Command::Attach(consumer)).unwrap();
         callback.drain_commands(&rx);
         drop(producer);
 
@@ -194,15 +217,34 @@ mod tests {
     }
 
     #[test]
+    fn detach_clears_consumer_immediately_even_with_queued_samples() {
+        let (mut callback, tx, rx) = fresh_callback();
+        let (mut producer, consumer) = rtrb::RingBuffer::<f32>::new(16);
+        for i in 1..=8 {
+            producer.push(i as f32).unwrap();
+        }
+        tx.send(Command::Attach(consumer)).unwrap();
+        callback.drain_commands(&rx);
+
+        tx.send(Command::Detach).unwrap();
+        callback.drain_commands(&rx);
+
+        let mut buf = vec![99.0; 4];
+        callback.fill(&mut buf);
+        assert_eq!(buf, vec![0.0, 0.0, 0.0, 0.0]);
+        assert!(callback.consumer.is_none());
+    }
+
+    #[test]
     fn drain_commands_replaces_existing_consumer() {
         let (mut callback, tx, rx) = fresh_callback();
         let (_p1, c1) = rtrb::RingBuffer::<f32>::new(8);
         let (mut p2, c2) = rtrb::RingBuffer::<f32>::new(8);
         p2.push(7.0).unwrap();
 
-        tx.send(c1).unwrap();
+        tx.send(Command::Attach(c1)).unwrap();
         callback.drain_commands(&rx);
-        tx.send(c2).unwrap();
+        tx.send(Command::Attach(c2)).unwrap();
         callback.drain_commands(&rx);
 
         let mut buf = vec![0.0; 1];
